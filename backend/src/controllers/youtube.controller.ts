@@ -10,6 +10,16 @@ const manualAnalyticsSchema = z.object({
   notes: z.string().max(500).optional(),
 });
 
+export async function getChannel(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const userId = req.user!.userId;
+    const channel = await youtubeService.getCreatorYouTubeChannel(userId);
+    sendSuccess(res, { channel }, 200);
+  } catch (error) {
+    next(error);
+  }
+}
+
 export async function getConnectUrl(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const userId = req.user!.userId;
@@ -27,9 +37,9 @@ export async function handleCallback(req: Request, res: Response, next: NextFunc
       res.status(400).send('Missing code or state in OAuth callback');
       return;
     }
-    const result = await youtubeService.handleYouTubeOAuthCallback(code, state, req.ip, req.headers['user-agent']);
-    // Redirect to frontend creator dashboard
-    res.redirect('/?tab=youtube&connected=true');
+    await youtubeService.handleYouTubeOAuthCallback(code, state, req.ip, req.headers['user-agent']);
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+    res.redirect(`${frontendUrl}/?tab=youtube&connected=true`);
   } catch (error) {
     next(error);
   }
@@ -51,6 +61,24 @@ export async function recordManualEntry(req: Request, res: Response, next: NextF
     const userId = req.user!.userId;
     const result = await youtubeService.recordManualAnalytics(userId, input, req.ip, req.headers['user-agent']);
     sendSuccess(res, { socialAccount: result }, 201);
+  } catch (error) {
+    next(error);
+  }
+}
+
+const uploadReportSchema = z.object({
+  fileName: z.string().min(1).max(255),
+  estimatedViews: z.coerce.number().min(0).optional(),
+  estimatedSubs: z.coerce.number().min(0).optional(),
+  notes: z.string().max(500).optional(),
+});
+
+export async function uploadReport(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const input = uploadReportSchema.parse(req.body);
+    const userId = req.user!.userId;
+    const result = await youtubeService.recordUploadedReport(userId, input, req.ip, req.headers['user-agent']);
+    sendSuccess(res, { socialAccount: result, message: 'Analytics evidence report uploaded successfully' }, 201);
   } catch (error) {
     next(error);
   }

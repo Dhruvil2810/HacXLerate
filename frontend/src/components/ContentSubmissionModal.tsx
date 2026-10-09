@@ -1,30 +1,72 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { apiRequest } from '../services/api';
 import { Youtube, X, CheckCircle2, AlertCircle, PlayCircle } from 'lucide-react';
 
 interface ContentSubmissionModalProps {
   isOpen: boolean;
-  campaignId: string;
-  campaignTitle: string;
-  cpmRate: number;
+  campaignId?: string;
+  campaignTitle?: string;
+  cpmRate?: number;
   onClose: () => void;
   onSuccess: () => void;
 }
 
+interface CampaignOption {
+  id: string;
+  title: string;
+  cpmRate: number;
+}
+
 export const ContentSubmissionModal: React.FC<ContentSubmissionModalProps> = ({
   isOpen,
-  campaignId,
-  campaignTitle,
-  cpmRate,
+  campaignId: initialCampaignId = '',
+  campaignTitle: initialCampaignTitle = '',
+  cpmRate: initialCpmRate = 50,
   onClose,
   onSuccess,
 }) => {
   const { token } = useAuth();
+  const [selectedCampaignId, setSelectedCampaignId] = useState(initialCampaignId);
+  const [campaignOptions, setCampaignOptions] = useState<CampaignOption[]>([]);
   const [url, setUrl] = useState('');
   const [initialViews, setInitialViews] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Load active campaigns for selection if not pre-provided
+  useEffect(() => {
+    if (!isOpen || !token) return;
+
+    async function loadCampaigns() {
+      try {
+        const res = await apiRequest<{ campaigns: any[] }>('/campaigns/marketplace', {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+
+        if (res.success && res.data?.campaigns && res.data.campaigns.length > 0) {
+          const opts: CampaignOption[] = res.data.campaigns.map((c: any) => ({
+            id: c.id,
+            title: c.title,
+            cpmRate: c.cpmRate || 50,
+          }));
+          setCampaignOptions(opts);
+
+          if (!selectedCampaignId || selectedCampaignId === '') {
+            setSelectedCampaignId(opts[0].id);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load campaigns for submission modal', err);
+      }
+    }
+
+    if (!initialCampaignId) {
+      loadCampaigns();
+    } else {
+      setSelectedCampaignId(initialCampaignId);
+    }
+  }, [isOpen, token, initialCampaignId]);
 
   if (!isOpen) return null;
 
@@ -37,12 +79,24 @@ export const ContentSubmissionModal: React.FC<ContentSubmissionModalProps> = ({
 
   const videoId = extractVideoId(url);
 
+  const currentCampaign = campaignOptions.find((c) => c.id === selectedCampaignId) || {
+    id: selectedCampaignId,
+    title: initialCampaignTitle || 'Active Performance Campaign',
+    cpmRate: initialCpmRate,
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
+    const activeId = selectedCampaignId || initialCampaignId;
+    if (!activeId) {
+      setError('Please select a campaign for this submission.');
+      return;
+    }
+
     if (!videoId) {
-      setError('Please provide a valid YouTube video or Short URL.');
+      setError('Please provide a valid YouTube video or Short URL (e.g. https://www.youtube.com/watch?v=... or https://youtu.be/...)');
       return;
     }
 
@@ -52,8 +106,8 @@ export const ContentSubmissionModal: React.FC<ContentSubmissionModalProps> = ({
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
         body: JSON.stringify({
-          campaignId,
-          publishedUrl: url,
+          campaignId: activeId,
+          publishedUrl: url.trim(),
           platform: 'YOUTUBE',
           initialViews: Number(initialViews),
         }),
@@ -61,6 +115,8 @@ export const ContentSubmissionModal: React.FC<ContentSubmissionModalProps> = ({
 
       onSuccess();
       onClose();
+      setUrl('');
+      setInitialViews(0);
     } catch (err: any) {
       setError(err.message || 'Failed to register published content');
     } finally {
@@ -85,7 +141,7 @@ export const ContentSubmissionModal: React.FC<ContentSubmissionModalProps> = ({
             <div>
               <h3>Submit Published Content Link</h3>
               <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                Campaign: <strong>{campaignTitle}</strong> • CPM: <strong>₹{cpmRate}/1k views</strong>
+                Target Campaign: <strong>{currentCampaign.title}</strong> • CPM: <strong>₹{currentCampaign.cpmRate}/1k views</strong>
               </p>
             </div>
           </div>
@@ -112,6 +168,35 @@ export const ContentSubmissionModal: React.FC<ContentSubmissionModalProps> = ({
         )}
 
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+          {/* Campaign Selector if multiple available */}
+          {campaignOptions.length > 0 && (
+            <div>
+              <label style={{ display: 'block', fontSize: '0.825rem', fontWeight: 600, marginBottom: '0.4rem' }}>
+                Select Active Campaign <span style={{ color: 'var(--color-brand)' }}>*</span>
+              </label>
+              <div style={{ position: 'relative' }}>
+                <select
+                  value={selectedCampaignId}
+                  onChange={(e) => setSelectedCampaignId(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '0.65rem 0.85rem',
+                    border: '1px solid var(--border-default)',
+                    borderRadius: 'var(--radius-md)',
+                    fontSize: '0.875rem',
+                    backgroundColor: 'var(--bg-surface)',
+                  }}
+                >
+                  {campaignOptions.map((camp) => (
+                    <option key={camp.id} value={camp.id}>
+                      {camp.title} — CPM ₹{camp.cpmRate} / 1k views
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          )}
+
           <div>
             <label style={{ display: 'block', fontSize: '0.825rem', fontWeight: 600, marginBottom: '0.4rem' }}>
               YouTube Video or Short URL <span style={{ color: 'var(--color-brand)' }}>*</span>
@@ -149,7 +234,6 @@ export const ContentSubmissionModal: React.FC<ContentSubmissionModalProps> = ({
                   alt="Video thumbnail"
                   style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                   onError={(e) => {
-                    // Fallback to placeholder if thumbnail is blocked
                     (e.target as HTMLElement).style.display = 'none';
                   }}
                 />

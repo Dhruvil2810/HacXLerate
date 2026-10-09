@@ -319,3 +319,126 @@ export async function recordManualAnalytics(
 
   return socialAccount;
 }
+
+export async function getCreatorYouTubeChannel(userId: string) {
+  const creatorProfile = await prisma.creatorProfile.findUnique({
+    where: { userId },
+  });
+
+  if (!creatorProfile) {
+    return null;
+  }
+
+  const socialAccount = await prisma.socialAccount.findFirst({
+    where: {
+      creatorId: creatorProfile.id,
+      platform: 'YOUTUBE',
+    },
+    include: {
+      youtubeChannel: {
+        include: {
+          analyticsSnapshots: {
+            orderBy: { snapshotDate: 'desc' },
+            take: 10,
+          },
+        },
+      },
+    },
+    orderBy: { updatedAt: 'desc' },
+  });
+
+  if (!socialAccount) {
+    return null;
+  }
+
+  const yt = (socialAccount as any).youtubeChannel;
+  if (!yt) {
+    // If only manual or uploaded metadata exists
+    const meta: any = socialAccount.metadata || {};
+    return {
+      channelId: socialAccount.platformAccountId,
+      title: socialAccount.accountName || `@${creatorProfile.handle}`,
+      description: creatorProfile.bio || '',
+      customUrl: `@${creatorProfile.handle}`,
+      subscriberCount: meta.subscriberCount || 0,
+      videoCount: 0,
+      totalViews: meta.totalViews || meta.averageViews || 0,
+      isVerified: socialAccount.verificationStatus === 'VERIFIED',
+      verificationStatus: socialAccount.verificationStatus,
+      snapshots: [],
+    };
+  }
+
+  const snapshots = yt.analyticsSnapshots || [];
+  return {
+    channelId: yt.channelId,
+    title: yt.title,
+    description: yt.description || '',
+    customUrl: yt.customUrl || `@${creatorProfile.handle}`,
+    subscriberCount: Number(yt.subscriberCount),
+    videoCount: yt.videoCount,
+    totalViews: Number(yt.totalViews),
+    isVerified: socialAccount.verificationStatus === 'VERIFIED',
+    verificationStatus: socialAccount.verificationStatus,
+    lastSyncedAt: yt.lastSyncedAt,
+    snapshots: snapshots.map((s: any) => ({
+      id: s.id,
+      snapshotDate: s.snapshotDate ? new Date(s.snapshotDate).toISOString() : new Date().toISOString(),
+      views: Number(s.views),
+      watchTimeMinutes: s.watchTimeMinutes,
+      avgViewPercentage: s.avgViewPercentage,
+      likes: Number(s.likes),
+      sourceType: s.sourceType,
+    })),
+  };
+}
+
+export async function recordUploadedReport(
+  userId: string,
+  input: { fileName: string; estimatedViews?: number; estimatedSubs?: number; notes?: string },
+  ip?: string,
+  userAgent?: string
+) {
+  const creatorProfile = await prisma.creatorProfile.findUnique({
+    where: { userId },
+  });
+
+  if (!creatorProfile) {
+    throw new AppError('Creator profile not found', 400, 'CREATOR_PROFILE_REQUIRED');
+  }
+
+  const socialAccount = await prisma.socialAccount.upsert({
+    where: {
+      creatorId_platform_platformAccountId: {
+        creatorId: creatorProfile.id,
+        platform: 'YOUTUBE',
+        platformAccountId: `upload_${creatorProfile.handle}`,
+      },
+    },
+    update: {
+      accountName: `@${creatorProfile.handle} (Document Evidence)`,
+      verificationStatus: 'UPLOADED',
+      metadata: input,
+    },
+    create: {
+      creatorId: creatorProfile.id,
+      platform: 'YOUTUBE',
+      platformAccountId: `upload_${creatorProfile.handle}`,
+      accountName: `@${creatorProfile.handle} (Document Evidence)`,
+      verificationStatus: 'UPLOADED',
+      metadata: input,
+    },
+  });
+
+  await createAuditLog({
+    actorId: userId,
+    action: 'ANALYTICS_REPORT_UPLOADED',
+    entityType: 'SocialAccount',
+    entityId: socialAccount.id,
+    ipAddress: ip,
+    userAgent: userAgent,
+    metadata: { ...input, source: 'UPLOADED_DOCUMENT' },
+  });
+
+  return socialAccount;
+}

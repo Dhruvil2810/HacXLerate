@@ -48,6 +48,13 @@ export const YouTubeAnalyticsView: React.FC = () => {
   const [manualSaved, setManualSaved] = useState(false);
   const [manualError, setManualError] = useState<string | null>(null);
 
+  // Upload report states
+  const [selectedFileName, setSelectedFileName] = useState<string>('');
+  const [uploadEstimatedViews, setUploadEstimatedViews] = useState<number>(85000);
+  const [uploadNotes, setUploadNotes] = useState<string>('');
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadBanner, setUploadBanner] = useState<string | null>(null);
+
   const fetchChannel = async () => {
     if (!token) return;
     setLoading(true);
@@ -129,6 +136,32 @@ export const YouTubeAnalyticsView: React.FC = () => {
       fetchChannel();
     } catch (err: any) {
       setManualError(err.message || 'Failed to save self-reported metrics');
+    }
+  };
+
+  const handleUploadSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!token || !selectedFileName) return;
+    setIsUploading(true);
+    setUploadBanner(null);
+
+    try {
+      await apiRequest('/social/youtube/upload-report', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          fileName: selectedFileName,
+          estimatedViews: Number(uploadEstimatedViews),
+          notes: uploadNotes,
+        }),
+      });
+
+      setUploadBanner('✓ Document evidence report uploaded and recorded as UPLOADED.');
+      fetchChannel();
+    } catch (err: any) {
+      setUploadBanner(`Error uploading evidence: ${err.message || 'Upload failed'}`);
+    } finally {
+      setIsUploading(false);
     }
   };
 
@@ -497,25 +530,114 @@ export const YouTubeAnalyticsView: React.FC = () => {
             </p>
           </div>
 
-          <div style={{
-            border: '2px dashed var(--border-default)',
-            borderRadius: 'var(--radius-lg)',
-            padding: '2.5rem 1rem',
-            textAlign: 'center',
-            backgroundColor: 'var(--bg-subtle)',
-            marginBottom: '1rem',
-          }}>
-            <UploadCloud size={36} color="var(--color-brand)" style={{ margin: '0 auto 8px' }} />
-            <div style={{ fontWeight: 600, fontSize: '0.9rem', marginBottom: '0.25rem' }}>
-              Drag and drop your YouTube analytics report
+          {uploadBanner && (
+            <div style={{
+              padding: '0.75rem',
+              backgroundColor: 'var(--color-success-light)',
+              color: 'var(--color-success)',
+              borderRadius: 'var(--radius-md)',
+              marginBottom: '1rem',
+              fontSize: '0.85rem',
+            }}>
+              {uploadBanner}
             </div>
-            <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-              Supports CSV, XLSX, and PDF exports up to 15MB
-            </p>
-            <button className="btn btn-secondary" style={{ fontSize: '0.8rem', marginTop: '1rem' }}>
-              Select File
-            </button>
-          </div>
+          )}
+
+          <form onSubmit={handleUploadSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            <div style={{
+              border: '2px dashed var(--border-default)',
+              borderRadius: 'var(--radius-lg)',
+              padding: '2rem 1rem',
+              textAlign: 'center',
+              backgroundColor: 'var(--bg-subtle)',
+              cursor: 'pointer',
+              position: 'relative',
+            }}>
+              <input
+                type="file"
+                accept=".csv,.xlsx,.pdf,.png,.jpg"
+                id="analytics-file-input"
+                onChange={(e) => {
+                  if (e.target.files && e.target.files[0]) {
+                    setSelectedFileName(e.target.files[0].name);
+                  }
+                }}
+                style={{
+                  position: 'absolute',
+                  inset: 0,
+                  opacity: 0,
+                  cursor: 'pointer',
+                  width: '100%',
+                  height: '100%',
+                }}
+              />
+              <UploadCloud size={36} color="var(--color-brand)" style={{ margin: '0 auto 8px' }} />
+              <div style={{ fontWeight: 600, fontSize: '0.9rem', marginBottom: '0.25rem' }}>
+                {selectedFileName ? `Selected: ${selectedFileName}` : 'Drag and drop your YouTube analytics report'}
+              </div>
+              <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                Supports CSV, XLSX, PDF, and screenshots up to 15MB
+              </p>
+              <button 
+                type="button" 
+                className="btn btn-secondary" 
+                style={{ fontSize: '0.8rem', marginTop: '0.75rem' }}
+                onClick={() => document.getElementById('analytics-file-input')?.click()}
+              >
+                {selectedFileName ? 'Change File' : 'Select File'}
+              </button>
+            </div>
+
+            <div>
+              <label style={{ display: 'block', fontSize: '0.825rem', fontWeight: 600, marginBottom: '0.35rem' }}>
+                Estimated Total Channel Views Shown in Report
+              </label>
+              <input
+                type="number"
+                min="0"
+                placeholder="e.g. 85000"
+                value={uploadEstimatedViews}
+                onChange={(e) => setUploadEstimatedViews(Number(e.target.value))}
+                style={{
+                  width: '100%',
+                  padding: '0.6rem 0.75rem',
+                  border: '1px solid var(--border-default)',
+                  borderRadius: 'var(--radius-md)',
+                  fontSize: '0.875rem',
+                }}
+              />
+            </div>
+
+            <div>
+              <label style={{ display: 'block', fontSize: '0.825rem', fontWeight: 600, marginBottom: '0.35rem' }}>
+                Notes / Report Context
+              </label>
+              <textarea
+                rows={3}
+                placeholder="e.g. YouTube Studio export for last 28 days showing reach, retention, and impressions..."
+                value={uploadNotes}
+                onChange={(e) => setUploadNotes(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '0.6rem 0.75rem',
+                  border: '1px solid var(--border-default)',
+                  borderRadius: 'var(--radius-md)',
+                  fontSize: '0.875rem',
+                  fontFamily: 'inherit',
+                }}
+              />
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.5rem' }}>
+              <button 
+                type="submit" 
+                className="btn btn-primary"
+                disabled={!selectedFileName || isUploading}
+              >
+                {isUploading ? 'Uploading Evidence...' : 'Submit Evidence Report'}
+              </button>
+            </div>
+          </form>
         </div>
       )}
     </div>

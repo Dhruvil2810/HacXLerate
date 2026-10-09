@@ -34,6 +34,7 @@ export const CreatorDashboard: React.FC<CreatorDashboardProps> = ({ onOpenOnboar
   const wallet = user?.creditWallet;
   const [activeTab, setActiveTab] = useState<CreatorTab>('overview');
   const [isSubmitModalOpen, setIsSubmitModalOpen] = useState(false);
+  const [performanceRefreshTrigger, setPerformanceRefreshTrigger] = useState(0);
   const [stats, setStats] = useState({
     activeCampaigns: 0,
     totalViews: 0,
@@ -154,6 +155,7 @@ export const CreatorDashboard: React.FC<CreatorDashboardProps> = ({ onOpenOnboar
       {activeTab === 'performance' && (
         <CampaignPerformanceView
           onOpenSubmitModal={() => setIsSubmitModalOpen(true)}
+          refreshTrigger={performanceRefreshTrigger}
         />
       )}
       {activeTab === 'discover' && <CampaignDiscovery />}
@@ -167,7 +169,10 @@ export const CreatorDashboard: React.FC<CreatorDashboardProps> = ({ onOpenOnboar
         campaignTitle="Selected Performance Campaign"
         cpmRate={50}
         onClose={() => setIsSubmitModalOpen(false)}
-        onSuccess={() => {}}
+        onSuccess={() => {
+          setPerformanceRefreshTrigger(prev => prev + 1);
+          setActiveTab('performance');
+        }}
       />
 
       {activeTab === 'overview' && (

@@ -8,6 +8,9 @@ export const youtubeRouter = Router();
 youtubeRouter.get('/callback', youtubeController.handleCallback);
 
 // Protected creator actions
+youtubeRouter.get('/channel', authenticate, requireRole(['CREATOR']), youtubeController.getChannel);
 youtubeRouter.get('/connect', authenticate, requireRole(['CREATOR']), youtubeController.getConnectUrl);
+youtubeRouter.get('/oauth/url', authenticate, requireRole(['CREATOR']), youtubeController.getConnectUrl);
 youtubeRouter.post('/sync', authenticate, requireRole(['CREATOR']), youtubeController.syncChannel);
 youtubeRouter.post('/manual-entry', authenticate, requireRole(['CREATOR']), youtubeController.recordManualEntry);
+youtubeRouter.post('/upload-report', authenticate, requireRole(['CREATOR']), youtubeController.uploadReport);

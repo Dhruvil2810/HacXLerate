@@ -3,6 +3,7 @@ import { AppError } from '../utils/response.util.js';
 import { createAuditLog } from './audit.service.js';
 import { SubmitContentInput, ReviewContentInput, EvaluateContentInput } from '../validators/performance.validator.js';
 import { PlatformType, PublishedContentStatus, SourceType } from '@prisma/client';
+import { getUserWallet } from './credit.service.js';
 
 /**
  * Extracts standard YouTube 11-character video ID from varied URL formats.
@@ -298,8 +299,15 @@ export async function evaluateIncrementalPerformance(
   // Incremental new payout for this evaluation run
   const newPayout = Math.max(0, maxPossibleCredits - content.earnedCredits);
 
-  const brandWallet = content.campaign.brand.user.creditWallet;
-  const creatorWallet = content.creator.user.creditWallet;
+  let brandWallet = content.campaign.brand.user.creditWallet;
+  if (!brandWallet) {
+    brandWallet = await getUserWallet(content.campaign.brand.userId);
+  }
+
+  let creatorWallet = content.creator.user.creditWallet;
+  if (!creatorWallet) {
+    creatorWallet = await getUserWallet(content.creator.userId);
+  }
 
   if (!brandWallet || !creatorWallet) {
     throw new AppError('Wallet records missing for transaction participants', 500, 'WALLET_ERROR');
@@ -658,6 +666,17 @@ export async function getCreatorPerformanceSummary(userId: string) {
           status: true,
         },
       },
+      creator: {
+        include: {
+          user: {
+            select: { name: true, avatarUrl: true },
+          },
+        },
+      },
+      snapshots: {
+        orderBy: { snapshotTimestamp: 'desc' },
+        take: 10,
+      },
     },
     orderBy: { createdAt: 'desc' },
   });
@@ -674,14 +693,29 @@ export async function getCreatorPerformanceSummary(userId: string) {
       campaignId: p.campaignId,
       campaignTitle: p.campaign.title,
       cpmRate: p.campaign.cpmRate,
+      creatorId: p.creatorId,
+      creatorName: p.creator.user.name,
+      creatorHandle: p.creator.handle,
+      creatorAvatar: p.creator.user.avatarUrl,
+      platform: p.platform,
       publishedUrl: p.publishedUrl,
       externalContentId: p.externalContentId,
+      status: p.status,
       initialViews: Number(p.initialViews),
       currentViews: Number(p.currentViews),
       incrementalViews: Number(p.incrementalViews),
       earnedCredits: p.earnedCredits,
-      status: p.status,
+      publishedAt: p.publishedAt,
       lastSyncedAt: p.lastSyncedAt,
+      snapshots: p.snapshots.map((s) => ({
+        id: s.id,
+        timestamp: s.snapshotTimestamp,
+        views: Number(s.views),
+        incrementalViews: Number(s.incrementalViews),
+        likes: Number(s.likes),
+        comments: Number(s.comments),
+        sourceType: s.sourceType,
+      })),
     })),
   };
 }

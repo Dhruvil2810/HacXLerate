@@ -19,9 +19,11 @@ import {
 interface PublishedContentItem {
   id: string;
   campaignId: string;
-  creatorId: string;
-  creatorName: string;
-  creatorHandle: string;
+  campaignTitle?: string;
+  cpmRate?: number;
+  creatorId?: string;
+  creatorName?: string;
+  creatorHandle?: string;
   creatorAvatar?: string;
   platform: string;
   publishedUrl: string;
@@ -31,9 +33,9 @@ interface PublishedContentItem {
   currentViews: number;
   incrementalViews: number;
   earnedCredits: number;
-  publishedAt: string;
+  publishedAt?: string;
   lastSyncedAt?: string;
-  snapshots: {
+  snapshots?: {
     id: string;
     timestamp: string;
     views: number;
@@ -63,6 +65,7 @@ interface CampaignPerformanceViewProps {
   cpmRate?: number;
   budgetCredits?: number;
   onOpenSubmitModal?: () => void;
+  refreshTrigger?: number;
 }
 
 export const CampaignPerformanceView: React.FC<CampaignPerformanceViewProps> = ({
@@ -71,6 +74,7 @@ export const CampaignPerformanceView: React.FC<CampaignPerformanceViewProps> = (
   cpmRate = 65,
   budgetCredits = 4500,
   onOpenSubmitModal,
+  refreshTrigger = 0,
 }) => {
   const { user, token } = useAuth();
   const activeRole = user?.activeRole;
@@ -89,25 +93,64 @@ export const CampaignPerformanceView: React.FC<CampaignPerformanceViewProps> = (
 
     setLoading(true);
     try {
-      const [contentsRes, leaderboardRes] = await Promise.all([
-        apiRequest<PublishedContentItem[]>(`/performance/content/campaign/${campaignId}`, {
+      if (activeRole === 'CREATOR') {
+        // Fetch all tracked content submitted by this creator across campaigns
+        const summaryRes = await apiRequest<{
+          totalEarnings: number;
+          totalVerifiedViews: number;
+          activeCampaigns: number;
+          publishedContents: PublishedContentItem[];
+        }>('/performance/creator/summary', {
           headers: { Authorization: `Bearer ${token}` },
-        }).catch(() => null),
-        apiRequest<{ leaderboard: LeaderboardItem[] }>(`/performance/campaign/${campaignId}/leaderboard`, {
-          headers: { Authorization: `Bearer ${token}` },
-        }).catch(() => null),
-      ]);
+        }).catch(() => null);
 
-      if (contentsRes?.data && Array.isArray(contentsRes.data)) {
-        setContents(contentsRes.data);
-      } else {
-        setContents([]);
-      }
+        const creatorContents = summaryRes?.data?.publishedContents || [];
+        setContents(creatorContents);
 
-      if (leaderboardRes?.data?.leaderboard && Array.isArray(leaderboardRes.data.leaderboard)) {
-        setLeaderboard(leaderboardRes.data.leaderboard);
+        // Fetch leaderboard for active campaign or creator's first campaign
+        const targetCampaignId = (campaignId && campaignId !== 'active_campaign')
+          ? campaignId
+          : creatorContents[0]?.campaignId;
+
+        if (targetCampaignId) {
+          const lbRes = await apiRequest<{ leaderboard: LeaderboardItem[] }>(
+            `/performance/campaign/${targetCampaignId}/leaderboard`,
+            { headers: { Authorization: `Bearer ${token}` } }
+          ).catch(() => null);
+
+          setLeaderboard(lbRes?.data?.leaderboard || []);
+        } else {
+          setLeaderboard([]);
+        }
       } else {
-        setLeaderboard([]);
+        // Brand role
+        let targetCampaignId = campaignId;
+        if (!targetCampaignId || targetCampaignId === 'active_campaign') {
+          const myCampaignsRes = await apiRequest<any[]>('/campaigns/my', {
+            headers: { Authorization: `Bearer ${token}` },
+          }).catch(() => null);
+
+          if (myCampaignsRes?.data && myCampaignsRes.data.length > 0) {
+            targetCampaignId = myCampaignsRes.data[0].id;
+          }
+        }
+
+        if (targetCampaignId && targetCampaignId !== 'active_campaign') {
+          const [contentsRes, leaderboardRes] = await Promise.all([
+            apiRequest<PublishedContentItem[]>(`/performance/content/campaign/${targetCampaignId}`, {
+              headers: { Authorization: `Bearer ${token}` },
+            }).catch(() => null),
+            apiRequest<{ leaderboard: LeaderboardItem[] }>(`/performance/campaign/${targetCampaignId}/leaderboard`, {
+              headers: { Authorization: `Bearer ${token}` },
+            }).catch(() => null),
+          ]);
+
+          setContents(contentsRes?.data && Array.isArray(contentsRes.data) ? contentsRes.data : []);
+          setLeaderboard(leaderboardRes?.data?.leaderboard && Array.isArray(leaderboardRes.data.leaderboard) ? leaderboardRes.data.leaderboard : []);
+        } else {
+          setContents([]);
+          setLeaderboard([]);
+        }
       }
     } catch {
       setContents([]);
@@ -119,7 +162,7 @@ export const CampaignPerformanceView: React.FC<CampaignPerformanceViewProps> = (
 
   useEffect(() => {
     fetchData();
-  }, [campaignId, token]);
+  }, [campaignId, token, refreshTrigger]);
 
   const handleRunEvaluation = async (contentId: string) => {
     setEvaluatingId(contentId);
@@ -132,7 +175,7 @@ export const CampaignPerformanceView: React.FC<CampaignPerformanceViewProps> = (
           {
             method: 'POST',
             headers: { Authorization: `Bearer ${token}` },
-            body: JSON.stringify({ simulatedViews: undefined }),
+            body: JSON.stringify({}),
           }
         );
 
@@ -141,7 +184,7 @@ export const CampaignPerformanceView: React.FC<CampaignPerformanceViewProps> = (
         }
       }
 
-      fetchData();
+      await fetchData();
     } catch (err: any) {
       setActionMessage(`Error evaluating performance: ${err.message || 'Unknown error'}`);
     } finally {
@@ -149,8 +192,8 @@ export const CampaignPerformanceView: React.FC<CampaignPerformanceViewProps> = (
     }
   };
 
-  const totalIncrementalViews = contents.reduce((acc, curr) => acc + curr.incrementalViews, 0);
-  const totalEarnedCredits = contents.reduce((acc, curr) => acc + curr.earnedCredits, 0);
+  const totalIncrementalViews = contents.reduce((acc, curr) => acc + (curr.incrementalViews || 0), 0);
+  const totalEarnedCredits = contents.reduce((acc, curr) => acc + (curr.earnedCredits || 0), 0);
   const remainingEscrow = Math.max(0, budgetCredits - totalEarnedCredits);
 
   return (
@@ -326,8 +369,13 @@ export const CampaignPerformanceView: React.FC<CampaignPerformanceViewProps> = (
                       <div>
                         <div className="flex items-center gap-1.5" style={{ fontWeight: 600 }}>
                           <Youtube size={14} color="#dc2626" />
-                          @{item.creatorHandle}
+                          @{item.creatorHandle || 'creator'}
                         </div>
+                        {item.campaignTitle && (
+                          <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.15rem' }}>
+                            Campaign: <strong>{item.campaignTitle}</strong>
+                          </div>
+                        )}
                         <a
                           href={item.publishedUrl}
                           target="_blank"
@@ -347,22 +395,22 @@ export const CampaignPerformanceView: React.FC<CampaignPerformanceViewProps> = (
                       </div>
                     </td>
                     <td>
-                      <code>{item.initialViews.toLocaleString()}</code>
+                      <code>{(item.initialViews || 0).toLocaleString()}</code>
                     </td>
                     <td>
-                      <strong>{item.currentViews.toLocaleString()}</strong>
+                      <strong>{(item.currentViews || 0).toLocaleString()}</strong>
                     </td>
                     <td>
                       <span style={{ fontWeight: 700, color: 'var(--color-success)' }}>
-                        +{item.incrementalViews.toLocaleString()}
+                        +{(item.incrementalViews || 0).toLocaleString()}
                       </span>
                     </td>
                     <td>
                       <div style={{ fontWeight: 700, color: 'var(--color-brand)' }}>
-                        {item.earnedCredits.toLocaleString()} Credits
+                        {(item.earnedCredits || 0).toLocaleString()} Credits
                       </div>
                       <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-                        ₹{cpmRate} CPM
+                        ₹{item.cpmRate || cpmRate} CPM
                       </div>
                     </td>
                     <td>
