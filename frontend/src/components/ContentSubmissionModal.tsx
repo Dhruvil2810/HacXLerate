@@ -33,6 +33,60 @@ export const ContentSubmissionModal: React.FC<ContentSubmissionModalProps> = ({
   const [initialViews, setInitialViews] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [analyzingVideo, setAnalyzingVideo] = useState(false);
+  const [videoTitle, setVideoTitle] = useState<string | null>(null);
+  const [channelTitle, setChannelTitle] = useState<string | null>(null);
+
+  // Extract YouTube Video ID
+  const extractVideoId = (inputUrl: string): string | null => {
+    const regExp = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?|shorts)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/i;
+    const match = inputUrl.match(regExp);
+    return match ? match[1] : null;
+  };
+
+  const videoId = extractVideoId(url);
+
+  // Auto fetch video stats when a valid videoId is detected
+  useEffect(() => {
+    if (!videoId || !token) {
+      setVideoTitle(null);
+      setChannelTitle(null);
+      return;
+    }
+
+    let isMounted = true;
+    async function fetchVideoDetails() {
+      setAnalyzingVideo(true);
+      try {
+        const res = await apiRequest<{ analysis: any }>('/social/youtube/analyze-video', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ videoUrl: url.trim() }),
+        });
+
+        if (isMounted && res.data?.analysis) {
+          setVideoTitle(res.data.analysis.title);
+          setChannelTitle(res.data.analysis.channelTitle);
+          if (res.data.analysis.views > 0) {
+            setInitialViews(res.data.analysis.views);
+          }
+        }
+      } catch {
+        // Fallback gracefully
+      } finally {
+        if (isMounted) setAnalyzingVideo(false);
+      }
+    }
+
+    const timer = setTimeout(() => {
+      fetchVideoDetails();
+    }, 400);
+
+    return () => {
+      isMounted = false;
+      clearTimeout(timer);
+    };
+  }, [videoId, url, token]);
 
   // Load active campaigns for selection if not pre-provided
   useEffect(() => {
@@ -69,15 +123,6 @@ export const ContentSubmissionModal: React.FC<ContentSubmissionModalProps> = ({
   }, [isOpen, token, initialCampaignId]);
 
   if (!isOpen) return null;
-
-  // Extract YouTube Video ID
-  const extractVideoId = (inputUrl: string): string | null => {
-    const regExp = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?|shorts)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/i;
-    const match = inputUrl.match(regExp);
-    return match ? match[1] : null;
-  };
-
-  const videoId = extractVideoId(url);
 
   const currentCampaign = campaignOptions.find((c) => c.id === selectedCampaignId) || {
     id: selectedCampaignId,
@@ -249,13 +294,32 @@ export const ContentSubmissionModal: React.FC<ContentSubmissionModalProps> = ({
                   <PlayCircle size={24} />
                 </div>
               </div>
-              <div style={{ fontSize: '0.825rem' }}>
-                <div className="badge badge-verified" style={{ marginBottom: '0.25rem' }}>
-                  <CheckCircle2 size={11} /> Video ID: {videoId}
+              <div style={{ fontSize: '0.825rem', flex: 1 }}>
+                <div className="flex items-center gap-1.5" style={{ marginBottom: '0.25rem' }}>
+                  <span className="badge badge-verified">
+                    <CheckCircle2 size={11} /> Video ID: {videoId}
+                  </span>
+                  {analyzingVideo && (
+                    <span style={{ fontSize: '0.75rem', color: 'var(--color-brand)' }}>
+                      Fetching video metrics...
+                    </span>
+                  )}
                 </div>
-                <div style={{ color: 'var(--text-secondary)' }}>
-                  Platform will record baseline views immediately upon submission.
-                </div>
+                {videoTitle && (
+                  <div style={{ fontWeight: 600, color: 'var(--text-primary)', marginBottom: '0.15rem' }}>
+                    {videoTitle}
+                  </div>
+                )}
+                {channelTitle && (
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                    Channel: <strong>{channelTitle}</strong>
+                  </div>
+                )}
+                {!videoTitle && (
+                  <div style={{ color: 'var(--text-secondary)', fontSize: '0.75rem' }}>
+                    Platform will record baseline views immediately upon submission.
+                  </div>
+                )}
               </div>
             </div>
           ) : (

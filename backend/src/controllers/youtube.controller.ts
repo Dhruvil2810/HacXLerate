@@ -83,3 +83,50 @@ export async function uploadReport(req: Request, res: Response, next: NextFuncti
     next(error);
   }
 }
+
+const linkChannelSchema = z.object({
+  channelUrl: z.string().min(1, 'Channel URL or handle is required'),
+});
+
+export async function linkChannel(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const input = linkChannelSchema.parse(req.body);
+    const userId = req.user!.userId;
+    const channel = await youtubeService.linkChannelByUrl(userId, input.channelUrl, req.ip, req.headers['user-agent']);
+    sendSuccess(res, { channel, message: 'YouTube channel linked and verified successfully' }, 200);
+  } catch (error) {
+    next(error);
+  }
+}
+
+const analyzeVideoSchema = z.object({
+  videoUrl: z.string().min(1, 'YouTube video URL is required'),
+});
+
+export async function analyzeVideo(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const input = analyzeVideoSchema.parse(req.body);
+    const analysis = await youtubeService.analyzeVideoByUrl(input.videoUrl);
+    sendSuccess(res, { analysis, message: 'Video analytics fetched and analyzed successfully' }, 200);
+  } catch (error) {
+    next(error);
+  }
+}
+
+const addVideoSchema = z.object({
+  videoUrl: z.string().min(1, 'YouTube video URL is required'),
+  title: z.string().optional(),
+  category: z.string().optional(),
+  toolsUsed: z.array(z.string()).optional(),
+});
+
+export async function addVideoToPortfolio(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const input = addVideoSchema.parse(req.body);
+    const userId = req.user!.userId;
+    const result = await youtubeService.addVideoToPortfolio(userId, input);
+    sendSuccess(res, { ...result, message: 'YouTube video added to portfolio with live verified metrics' }, 201);
+  } catch (error) {
+    next(error);
+  }
+}

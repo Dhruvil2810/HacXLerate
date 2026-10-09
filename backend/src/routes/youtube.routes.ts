@@ -14,3 +14,6 @@ youtubeRouter.get('/oauth/url', authenticate, requireRole(['CREATOR']), youtubeC
 youtubeRouter.post('/sync', authenticate, requireRole(['CREATOR']), youtubeController.syncChannel);
 youtubeRouter.post('/manual-entry', authenticate, requireRole(['CREATOR']), youtubeController.recordManualEntry);
 youtubeRouter.post('/upload-report', authenticate, requireRole(['CREATOR']), youtubeController.uploadReport);
+youtubeRouter.post('/link-channel', authenticate, requireRole(['CREATOR']), youtubeController.linkChannel);
+youtubeRouter.post('/analyze-video', authenticate, requireRole(['CREATOR']), youtubeController.analyzeVideo);
+youtubeRouter.post('/add-video', authenticate, requireRole(['CREATOR']), youtubeController.addVideoToPortfolio);
