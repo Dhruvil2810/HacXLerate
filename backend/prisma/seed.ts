@@ -1,4 +1,4 @@
-import { PrismaClient, UserRole, UserStatus, PlatformType, VerificationStatus, RewardModel, CampaignStatus, PublishedContentStatus, SourceType, CreditTransactionType } from '@prisma/client';
+import { PrismaClient, RoleType, UserStatus, PlatformType, VerificationStatus, RewardModel, CampaignStatus, PublishedContentStatus, SourceType, CreditTransactionType } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
@@ -21,7 +21,7 @@ async function main() {
       status: UserStatus.ACTIVE,
       isEmailVerified: true,
       roles: {
-        create: [{ role: UserRole.BRAND }],
+        create: [{ role: RoleType.BRAND, isPrimary: true }],
       },
       brandProfile: {
         create: {
@@ -183,7 +183,7 @@ async function main() {
         status: UserStatus.ACTIVE,
         isEmailVerified: true,
         roles: {
-          create: [{ role: UserRole.CREATOR }],
+          create: [{ role: RoleType.CREATOR, isPrimary: true }],
         },
         creatorProfile: {
           create: {
@@ -224,7 +224,7 @@ async function main() {
         platform: PlatformType.YOUTUBE,
         platformAccountId: `UC_${c.handle}_channel`,
         accountName: c.name,
-        verificationStatus: VerificationStatus.PLATFORM_VERIFIED,
+        verificationStatus: VerificationStatus.VERIFIED,
         verifiedAt: new Date(),
         youtubeChannel: {
           create: {
@@ -234,9 +234,7 @@ async function main() {
             customUrl: `@${c.handle}`,
             subscriberCount: BigInt(c.subscribers),
             videoCount: 142,
-            viewCount: BigInt(c.totalViews),
-            country: 'US',
-            isVerified: true,
+            totalViews: BigInt(c.totalViews),
             lastSyncedAt: new Date(),
           },
         },
@@ -327,7 +325,7 @@ async function main() {
       status: UserStatus.ACTIVE,
       isEmailVerified: true,
       roles: {
-        create: [{ role: UserRole.ADMIN }],
+        create: [{ role: RoleType.ADMIN, isPrimary: true }],
       },
       creditWallet: {
         create: {
