@@ -1,0 +1,744 @@
+// ==============================================================================
+// CreatorOS — Master Prisma Database Schema
+// ==============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ------------------------------------------------------------------------------
+// ENUMS
+// ------------------------------------------------------------------------------
+
+enum RoleType {
+  BRAND
+  CREATOR
+  ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  DEACTIVATED
+}
+
+enum PlatformType {
+  YOUTUBE
+  INSTAGRAM
+  TIKTOK
+}
+
+enum VerificationStatus {
+  VERIFIED
+  UPLOADED
+  SELF_REPORTED
+}
+
+enum SourceType {
+  PLATFORM_VERIFIED
+  UPLOADED
+  SELF_REPORTED
+  CALCULATED
+  AI_GENERATED
+}
+
+enum RewardModel {
+  CPM
+  CPE
+  CLICK
+  CONVERSION
+  HYBRID
+}
+
+enum CampaignStatus {
+  DRAFT
+  PUBLISHED
+  APPLICATIONS_OPEN
+  IN_PROGRESS
+  CONTENT_REVIEW
+  LIVE
+  COMPLETED
+  PAUSED
+  CANCELLED
+}
+
+enum ApplicationStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  WITHDRAWN
+}
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  EXPIRED
+}
+
+enum SubmissionStatus {
+  DRAFT
+  SUBMITTED
+  BRAND_REVIEW
+  APPROVED
+  REJECTED
+  REVISION_REQUIRED
+  PUBLISHED
+}
+
+enum PublishedContentStatus {
+  TRACKING
+  COMPLETED
+  FLAGGED
+}
+
+enum CreditTransactionType {
+  CREDIT_GRANT
+  AI_USAGE
+  CAMPAIGN_REWARD
+  CAMPAIGN_RESERVATION
+  CAMPAIGN_RELEASE
+  CAMPAIGN_REFUND
+  ADMIN_ADJUSTMENT
+  REVERSAL
+}
+
+// ------------------------------------------------------------------------------
+// IDENTITY & RBAC
+// ------------------------------------------------------------------------------
+
+model User {
+  id                    String            @id @default(cuid())
+  email                 String            @unique
+  passwordHash          String?
+  name                  String
+  avatarUrl             String?
+  status                UserStatus        @default(ACTIVE)
+  isEmailVerified       Boolean           @default(false)
+  googleId              String?           @unique
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+
+  // Relationships
+  roles                 UserRole[]
+  brandProfile          BrandProfile?
+  creatorProfile        CreatorProfile?
+  creditWallet          CreditWallet?
+  messagesSent          Message[]         @relation("SentMessages")
+  conversations         ConversationParticipant[]
+  aiUsages              AIUsage[]
+  auditLogs             AuditLog[]        @relation("ActorAuditLogs")
+  notifications         Notification[]
+  adminActions          AdminAction[]     @relation("AdminUserActions")
+
+  @@index([email])
+  @@index([googleId])
+}
+
+model UserRole {
+  id                    String            @id @default(cuid())
+  userId                String
+  role                  RoleType
+  isPrimary             Boolean           @default(false)
+  createdAt             DateTime          @default(now())
+
+  user                  User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, role])
+  @@index([userId])
+}
+
+// ------------------------------------------------------------------------------
+// BRAND PROFILE & PRODUCTS
+// ------------------------------------------------------------------------------
+
+model BrandProfile {
+  id                    String            @id @default(cuid())
+  userId                String            @unique
+  companyName           String
+  industry              String?
+  websiteUrl            String?
+  description           String?
+  logoUrl               String?
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+
+  user                  User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  products              Product[]
+  campaigns             Campaign[]
+
+  @@index([companyName])
+}
+
+model Product {
+  id                    String            @id @default(cuid())
+  brandId               String
+  name                  String
+  description           String
+  category              String
+  websiteUrl            String?
+  productUrl            String?
+  usp                   String?
+  features              Json?
+  pricingDetails        String?
+  targetAudience        String?
+  brandGuidelines       String?
+  restrictions          String?
+  aiAnalysis            Json?
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+
+  brand                 BrandProfile      @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  documents             ProductDocument[]
+  campaigns             Campaign[]
+
+  @@index([brandId])
+  @@index([category])
+}
+
+model ProductDocument {
+  id                    String            @id @default(cuid())
+  productId             String
+  fileName              String
+  fileUrl               String
+  fileType              String
+  fileSize              Int
+  extractedText         String?
+  createdAt             DateTime          @default(now())
+
+  product               Product           @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId])
+}
+
+// ------------------------------------------------------------------------------
+// CREATOR PROFILE & PORTFOLIO
+// ------------------------------------------------------------------------------
+
+model CreatorProfile {
+  id                    String            @id @default(cuid())
+  userId                String            @unique
+  handle                String            @unique
+  bio                   String?
+  location              String?
+  categories            String[]          @default([])
+  skills                String[]          @default([])
+  tools                 String[]          @default([])
+  contentTypes          String[]          @default([])
+  statsSummary          Json?
+  isVerified            Boolean           @default(false)
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+
+  user                  User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  portfolioItems        PortfolioItem[]
+  socialAccounts        SocialAccount[]
+  applications          CampaignApplication[]
+  campaignsParticipated CampaignCreator[]
+  invitations           CampaignInvitation[]
+  contentSubmissions    ContentSubmission[]
+  publishedContents     PublishedContent[]
+
+  @@index([handle])
+  @@index([location])
+}
+
+model PortfolioItem {
+  id                    String            @id @default(cuid())
+  creatorId             String
+  title                 String
+  description           String?
+  mediaUrl              String
+  thumbnailUrl          String?
+  category              String?
+  toolsUsed             String[]          @default([])
+  metricsSummary        Json?
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+
+  creator               CreatorProfile    @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+
+  @@index([creatorId])
+}
+
+// ------------------------------------------------------------------------------
+// SOCIAL CHANNELS & YOUTUBE INTEGRATION
+// ------------------------------------------------------------------------------
+
+model SocialAccount {
+  id                    String            @id @default(cuid())
+  creatorId             String
+  platform              PlatformType
+  platformAccountId     String
+  accountName           String
+  avatarUrl             String?
+  verificationStatus    VerificationStatus @default(SELF_REPORTED)
+  verifiedAt            DateTime?
+  metadata              Json?
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+
+  creator               CreatorProfile    @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  oauthCredential       SocialOAuthCredential?
+  youtubeChannel        YouTubeChannel?
+  publishedContents     PublishedContent[]
+
+  @@unique([creatorId, platform, platformAccountId])
+  @@index([creatorId])
+  @@index([platform])
+}
+
+model SocialOAuthCredential {
+  id                    String            @id @default(cuid())
+  socialAccountId       String            @unique
+  encryptedAccessToken  String
+  encryptedRefreshToken String?
+  tokenExpiresAt        DateTime?
+  scope                 String?
+  updatedAt             DateTime          @updatedAt
+
+  socialAccount         SocialAccount     @relation(fields: [socialAccountId], references: [id], onDelete: Cascade)
+}
+
+model YouTubeChannel {
+  id                    String            @id @default(cuid())
+  socialAccountId       String            @unique
+  channelId             String            @unique
+  title                 String
+  description           String?
+  customUrl             String?
+  subscriberCount       BigInt            @default(0)
+  totalViews            BigInt            @default(0)
+  videoCount            Int               @default(0)
+  publishedAt           DateTime?
+  lastSyncedAt          DateTime?
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+
+  socialAccount         SocialAccount     @relation(fields: [socialAccountId], references: [id], onDelete: Cascade)
+  videos                YouTubeVideo[]
+  analyticsSnapshots    YouTubeAnalyticsSnapshot[]
+  audienceSnapshots     YouTubeAudienceSnapshot[]
+
+  @@index([channelId])
+}
+
+model YouTubeVideo {
+  id                    String            @id @default(cuid())
+  youtubeChannelId      String
+  videoId               String
+  title                 String
+  description           String?
+  thumbnailUrl          String?
+  duration              String?
+  categoryId            String?
+  tags                  String[]          @default([])
+  views                 BigInt            @default(0)
+  likes                 BigInt            @default(0)
+  comments              BigInt            @default(0)
+  publishedAt           DateTime
+  lastSyncedAt          DateTime?
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+
+  youtubeChannel        YouTubeChannel    @relation(fields: [youtubeChannelId], references: [id], onDelete: Cascade)
+  analyticsSnapshots    YouTubeAnalyticsSnapshot[]
+
+  @@unique([youtubeChannelId, videoId])
+  @@index([videoId])
+  @@index([publishedAt])
+}
+
+model YouTubeAnalyticsSnapshot {
+  id                    String            @id @default(cuid())
+  youtubeChannelId      String
+  videoId               String?
+  snapshotDate          DateTime
+  views                 BigInt            @default(0)
+  watchTimeMinutes      Float             @default(0)
+  avgDurationSeconds    Float             @default(0)
+  avgViewPercentage     Float?
+  likes                 BigInt            @default(0)
+  comments              BigInt            @default(0)
+  shares                BigInt            @default(0)
+  subscribersGained     Int               @default(0)
+  subscribersLost       Int               @default(0)
+  sourceType            SourceType        @default(PLATFORM_VERIFIED)
+  createdAt             DateTime          @default(now())
+
+  youtubeChannel        YouTubeChannel    @relation(fields: [youtubeChannelId], references: [id], onDelete: Cascade)
+  video                 YouTubeVideo?     @relation(fields: [youtubeChannelId, videoId], references: [youtubeChannelId, videoId], onDelete: Cascade)
+
+  @@index([youtubeChannelId, snapshotDate])
+  @@index([videoId, snapshotDate])
+}
+
+model YouTubeAudienceSnapshot {
+  id                    String            @id @default(cuid())
+  youtubeChannelId      String
+  snapshotDate          DateTime
+  geographyJson         Json?
+  ageDemographicsJson   Json?
+  genderDemographicsJson Json?
+  trafficSourcesJson    Json?
+  deviceTypesJson       Json?
+  sourceType            SourceType        @default(PLATFORM_VERIFIED)
+  createdAt             DateTime          @default(now())
+
+  youtubeChannel        YouTubeChannel    @relation(fields: [youtubeChannelId], references: [id], onDelete: Cascade)
+
+  @@index([youtubeChannelId, snapshotDate])
+}
+
+// ------------------------------------------------------------------------------
+// CAMPAIGNS & PARTICIPATION
+// ------------------------------------------------------------------------------
+
+model Campaign {
+  id                    String            @id @default(cuid())
+  brandId               String
+  productId             String?
+  title                 String
+  objective             String
+  description           String
+  budgetCredits         Int
+  allocatedCredits      Int               @default(0)
+  spentCredits          Int               @default(0)
+  rewardModel           RewardModel       @default(CPM)
+  cpmRate               Float             @default(50.0)
+  status                CampaignStatus    @default(DRAFT)
+  targetAudience        String?
+  targetLocation        String?
+  targetAgeRange        String?
+  targetGender          String?
+  contentPlatform       PlatformType      @default(YOUTUBE)
+  contentType           String?
+  creatorCategories     String[]          @default([])
+  requiredSkills        String[]          @default([])
+  preferredTools        String[]          @default([])
+  contentRequirements   String?
+  prohibitedContent     String?
+  ctaUrl                String?
+  hashtags              String[]          @default([])
+  startDate             DateTime?
+  endDate               DateTime?
+  aiGeneratedBrief      Json?
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+
+  brand                 BrandProfile      @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  product               Product?          @relation(fields: [productId], references: [id], onDelete: SetNull)
+  requirements          CampaignRequirement[]
+  creators              CampaignCreator[]
+  applications          CampaignApplication[]
+  invitations           CampaignInvitation[]
+  contentSubmissions    ContentSubmission[]
+  publishedContents     PublishedContent[]
+  conversations         Conversation[]
+
+  @@index([brandId])
+  @@index([status])
+  @@index([rewardModel])
+}
+
+model CampaignRequirement {
+  id                    String            @id @default(cuid())
+  campaignId            String
+  key                   String
+  value                 String
+  isMandatory           Boolean           @default(true)
+
+  campaign              Campaign          @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@index([campaignId])
+}
+
+model CampaignApplication {
+  id                    String            @id @default(cuid())
+  campaignId            String
+  creatorId             String
+  pitch                 String?
+  proposedRate          Float?
+  status                ApplicationStatus @default(PENDING)
+  aiMatchScore          Float?
+  aiMatchExplanation    String?
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+
+  campaign              Campaign          @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  creator               CreatorProfile    @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+
+  @@unique([campaignId, creatorId])
+  @@index([campaignId])
+  @@index([creatorId])
+  @@index([status])
+}
+
+model CampaignInvitation {
+  id                    String            @id @default(cuid())
+  campaignId            String
+  creatorId             String
+  message               String?
+  offeredCpm            Float?
+  status                InvitationStatus  @default(PENDING)
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+
+  campaign              Campaign          @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  creator               CreatorProfile    @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+
+  @@unique([campaignId, creatorId])
+  @@index([campaignId])
+  @@index([creatorId])
+}
+
+model CampaignCreator {
+  id                    String            @id @default(cuid())
+  campaignId            String
+  creatorId             String
+  status                String            @default("ACTIVE")
+  totalVerifiedViews    BigInt            @default(0)
+  earnedCredits         Int               @default(0)
+  joinedAt              DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+
+  campaign              Campaign          @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  creator               CreatorProfile    @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+
+  @@unique([campaignId, creatorId])
+  @@index([campaignId])
+  @@index([creatorId])
+}
+
+// ------------------------------------------------------------------------------
+// CONTENT LIFECYCLE & LIVE TRACKING
+// ------------------------------------------------------------------------------
+
+model ContentSubmission {
+  id                    String            @id @default(cuid())
+  campaignId            String
+  creatorId             String
+  title                 String
+  draftText             String?
+  mediaUrls             String[]          @default([])
+  version               Int               @default(1)
+  status                SubmissionStatus  @default(SUBMITTED)
+  brandFeedback         String?
+  submittedAt           DateTime          @default(now())
+  reviewedAt            DateTime?
+  updatedAt             DateTime          @updatedAt
+
+  campaign              Campaign          @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  creator               CreatorProfile    @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+
+  @@index([campaignId])
+  @@index([creatorId])
+  @@index([status])
+}
+
+model PublishedContent {
+  id                    String            @id @default(cuid())
+  campaignId            String
+  creatorId             String
+  socialAccountId       String
+  platform              PlatformType      @default(YOUTUBE)
+  publishedUrl          String
+  externalContentId     String
+  status                PublishedContentStatus @default(TRACKING)
+  initialViews          BigInt            @default(0)
+  currentViews          BigInt            @default(0)
+  incrementalViews      BigInt            @default(0)
+  earnedCredits         Int               @default(0)
+  publishedAt           DateTime
+  lastSyncedAt          DateTime?
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+
+  campaign              Campaign          @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  creator               CreatorProfile    @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  socialAccount         SocialAccount     @relation(fields: [socialAccountId], references: [id], onDelete: Cascade)
+  snapshots             AnalyticsSnapshot[]
+
+  @@index([campaignId])
+  @@index([creatorId])
+  @@index([externalContentId])
+}
+
+model AnalyticsSnapshot {
+  id                    String            @id @default(cuid())
+  publishedContentId    String
+  snapshotTimestamp     DateTime          @default(now())
+  views                 BigInt            @default(0)
+  incrementalViews      BigInt            @default(0)
+  likes                 BigInt            @default(0)
+  comments              BigInt            @default(0)
+  watchTimeMinutes      Float             @default(0)
+  sourceType            SourceType        @default(PLATFORM_VERIFIED)
+  createdAt             DateTime          @default(now())
+
+  publishedContent      PublishedContent  @relation(fields: [publishedContentId], references: [id], onDelete: Cascade)
+
+  @@index([publishedContentId, snapshotTimestamp])
+}
+
+// ------------------------------------------------------------------------------
+// CREDIT WALLET & IMMUTABLE LEDGER
+// ------------------------------------------------------------------------------
+
+model CreditWallet {
+  id                    String            @id @default(cuid())
+  userId                String            @unique
+  balance               Int               @default(0)
+  reservedBalance       Int               @default(0)
+  lifetimeEarned        Int               @default(0)
+  lifetimeSpent         Int               @default(0)
+  updatedAt             DateTime          @updatedAt
+
+  user                  User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  ledgerEntries         CreditLedgerEntry[]
+
+  @@index([userId])
+}
+
+model CreditLedgerEntry {
+  id                    String            @id @default(cuid())
+  walletId              String
+  userId                String
+  amount                Int
+  type                  CreditTransactionType
+  referenceType         String?
+  referenceId           String?
+  description           String
+  idempotencyKey        String?           @unique
+  metadata              Json?
+  createdAt             DateTime          @default(now())
+
+  wallet                CreditWallet      @relation(fields: [walletId], references: [id], onDelete: Cascade)
+
+  @@index([walletId, createdAt])
+  @@index([userId])
+  @@index([type])
+}
+
+// ------------------------------------------------------------------------------
+// MESSAGING & NOTIFICATIONS
+// ------------------------------------------------------------------------------
+
+model Conversation {
+  id                    String            @id @default(cuid())
+  campaignId            String?
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+
+  campaign              Campaign?         @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  participants          ConversationParticipant[]
+  messages              Message[]
+
+  @@index([campaignId])
+}
+
+model ConversationParticipant {
+  id                    String            @id @default(cuid())
+  conversationId        String
+  userId                String
+  lastReadAt            DateTime?
+  joinedAt              DateTime          @default(now())
+
+  conversation          Conversation      @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user                  User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, userId])
+  @@index([conversationId])
+  @@index([userId])
+}
+
+model Message {
+  id                    String            @id @default(cuid())
+  conversationId        String
+  senderId              String
+  content               String
+  attachments           Json?
+  createdAt             DateTime          @default(now())
+
+  conversation          Conversation      @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender                User              @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
+  @@index([senderId])
+}
+
+model Notification {
+  id                    String            @id @default(cuid())
+  userId                String
+  title                 String
+  message               String
+  type                  String
+  linkUrl               String?
+  isRead                Boolean           @default(false)
+  createdAt             DateTime          @default(now())
+
+  user                  User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead])
+}
+
+// ------------------------------------------------------------------------------
+// AI USAGE, AUDIT LOGS & ADMIN
+// ------------------------------------------------------------------------------
+
+model AIUsage {
+  id                    String            @id @default(cuid())
+  userId                String
+  operation             String
+  model                 String
+  promptTokens          Int               @default(0)
+  completionTokens      Int               @default(0)
+  creditCost            Int               @default(0)
+  success               Boolean           @default(true)
+  errorMessage          String?
+  latencyMs             Int               @default(0)
+  createdAt             DateTime          @default(now())
+
+  user                  User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([operation])
+}
+
+model AuditLog {
+  id                    String            @id @default(cuid())
+  actorId               String?
+  action                String
+  entityType            String
+  entityId              String?
+  ipAddress             String?
+  userAgent             String?
+  metadata              Json?
+  createdAt             DateTime          @default(now())
+
+  actor                 User?             @relation("ActorAuditLogs", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([actorId, createdAt])
+  @@index([action])
+  @@index([entityType, entityId])
+}
+
+model AdminAction {
+  id                    String            @id @default(cuid())
+  adminUserId           String
+  targetUserId          String?
+  actionType            String
+  reason                String
+  metadata              Json?
+  createdAt             DateTime          @default(now())
+
+  adminUser             User              @relation("AdminUserActions", fields: [adminUserId], references: [id], onDelete: Cascade)
+
+  @@index([adminUserId])
+  @@index([targetUserId])
+}
