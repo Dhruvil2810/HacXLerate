@@ -9,3 +9,4 @@ aiRouter.use(authenticate);
 aiRouter.post('/product-analyze', aiController.analyzeProduct);
 aiRouter.post('/campaign-assist', aiController.assistCampaignBrief);
 aiRouter.post('/creator-match', aiController.explainMatch);
+aiRouter.post('/pitch-assist', aiController.generatePitch);

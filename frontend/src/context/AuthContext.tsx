@@ -13,6 +13,7 @@ interface AuthContextType {
   logout: () => void;
   updateUser: (updatedUser: User) => void;
   demoLogin: (role: RoleType) => void;
+  refreshProfile: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -152,6 +153,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await login(email, 'Password123!');
   };
 
+  const refreshProfile = async () => {
+    const storedToken = token || localStorage.getItem(TOKEN_KEY);
+    if (!storedToken) return;
+    try {
+      const response = await apiRequest<{ user: User }>('/auth/me', {
+        headers: { Authorization: `Bearer ${storedToken}` },
+      });
+      if (response.success && response.data) {
+        setUser(response.data.user);
+        localStorage.setItem(USER_KEY, JSON.stringify(response.data.user));
+      }
+    } catch (err) {
+      console.error('Failed to refresh user profile', err);
+    }
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -165,6 +182,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         logout,
         updateUser,
         demoLogin,
+        refreshProfile,
       }}
     >
       {children}

@@ -43,30 +43,36 @@ export const CreatorDashboard: React.FC<CreatorDashboardProps> = ({ onOpenOnboar
   });
 
   useEffect(() => {
-    // Fetch live dashboard metrics
     const fetchMetrics = async () => {
       if (!token) return;
       try {
-        const [perfRes, ytRes] = await Promise.allSettled([
-          apiRequest<any>('/performance/my-content', { headers: { Authorization: `Bearer ${token}` } }),
+        const [creatorSummaryRes, ytRes] = await Promise.allSettled([
+          apiRequest<any>('/performance/creator/summary', { headers: { Authorization: `Bearer ${token}` } }),
           apiRequest<any>('/social/youtube/channel', { headers: { Authorization: `Bearer ${token}` } })
         ]);
         
         let totalViews = 0;
         let activeCamps = 0;
-        if (perfRes.status === 'fulfilled' && perfRes.value.success && Array.isArray(perfRes.value.data)) {
-          const contents = perfRes.value.data;
-          activeCamps = contents.length;
-          totalViews = contents.reduce((sum: number, c: any) => sum + (Number(c.currentViews) || 0), 0);
+        let totalEarnings = wallet?.balance || 0;
+
+        if (creatorSummaryRes.status === 'fulfilled' && creatorSummaryRes.value.success && creatorSummaryRes.value.data) {
+          const sumData = creatorSummaryRes.value.data;
+          activeCamps = sumData.activeCampaigns || 0;
+          totalViews = sumData.totalVerifiedViews || 0;
+          if (sumData.totalEarnings) totalEarnings = sumData.totalEarnings;
         }
-        if (ytRes.status === 'fulfilled' && ytRes.value.success && ytRes.value.data?.totalViews) {
-          totalViews = Math.max(totalViews, Number(ytRes.value.data.totalViews));
+
+        if (ytRes.status === 'fulfilled' && ytRes.value.success && ytRes.value.data) {
+          const channelViews = Number(ytRes.value.data?.channel?.totalViews || ytRes.value.data?.totalViews || 0);
+          if (channelViews > 0) {
+            totalViews = Math.max(totalViews, channelViews);
+          }
         }
 
         setStats({
           activeCampaigns: activeCamps,
           totalViews,
-          totalEarnings: wallet?.balance || 0,
+          totalEarnings,
           cpmAvg: activeCamps > 0 ? 50 : 0
         });
       } catch (err) {

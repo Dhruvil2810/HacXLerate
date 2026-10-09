@@ -9,7 +9,8 @@ import {
   CheckCircle2, 
   Tag, 
   AlertCircle,
-  FileText
+  FileText,
+  Sparkles
 } from 'lucide-react';
 
 interface CampaignItem {
@@ -49,7 +50,7 @@ interface CampaignItem {
 const CATEGORIES = ['All', 'Technology', 'AI Film & Animation', 'Product Design', 'Gaming', 'Productivity', 'Lifestyle'];
 
 export const CampaignDiscovery: React.FC = () => {
-  const { token } = useAuth();
+  const { user, token } = useAuth();
   const [campaigns, setCampaigns] = useState<CampaignItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -62,6 +63,7 @@ export const CampaignDiscovery: React.FC = () => {
   const [submitting, setSubmitting] = useState(false);
   const [applySuccess, setApplySuccess] = useState(false);
   const [applyError, setApplyError] = useState<string | null>(null);
+  const [aiGeneratingPitch, setAiGeneratingPitch] = useState(false);
 
   const fetchCampaigns = async () => {
     setLoading(true);
@@ -70,19 +72,51 @@ export const CampaignDiscovery: React.FC = () => {
       if (selectedCategory !== 'All') params.set('category', selectedCategory);
 
       const url = `/campaigns/marketplace${params.toString() ? `?${params.toString()}` : ''}`;
-      const res = await apiRequest<CampaignItem[]>(url, {
+      const res = await apiRequest<any>(url, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
 
-      if (res.data && Array.isArray(res.data)) {
-        setCampaigns(res.data);
-      } else {
-        setCampaigns([]);
-      }
+      const list = res.data?.campaigns || (Array.isArray(res.data) ? res.data : []);
+      setCampaigns(list);
     } catch {
       setCampaigns([]);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleGenerateAiPitch = async () => {
+    if (!selectedCampaign || !token) return;
+    setAiGeneratingPitch(true);
+    try {
+      const res = await apiRequest<any>('/ai/pitch-assist', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          campaign: {
+            title: selectedCampaign.title,
+            objective: selectedCampaign.objective,
+            categories: selectedCampaign.creatorCategories,
+            description: selectedCampaign.description,
+            cpmRate: selectedCampaign.cpmRate,
+          },
+          creator: {
+            handle: user?.creatorProfile?.handle || user?.name || 'Creator',
+            categories: user?.creatorProfile?.categories || [],
+            bio: user?.creatorProfile?.bio || '',
+          },
+        }),
+      });
+      if (res.success && res.data?.pitch) {
+        setPitch(res.data.pitch);
+        if (res.data.suggestedRate) {
+          setProposedRate(res.data.suggestedRate);
+        }
+      }
+    } catch (err: any) {
+      console.error('Failed to generate pitch with AI', err);
+    } finally {
+      setAiGeneratingPitch(false);
     }
   };
 
@@ -324,9 +358,22 @@ export const CampaignDiscovery: React.FC = () => {
 
             <form onSubmit={handleApplySubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
               <div>
-                <label style={{ display: 'block', fontSize: '0.825rem', fontWeight: 600, marginBottom: '0.35rem' }}>
-                  Your Creative Pitch & Approach <span style={{ color: 'var(--color-brand)' }}>*</span>
-                </label>
+                <div className="flex items-center justify-between" style={{ marginBottom: '0.35rem' }}>
+                  <label style={{ fontSize: '0.825rem', fontWeight: 600 }}>
+                    Your Creative Pitch & Approach <span style={{ color: 'var(--color-brand)' }}>*</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={handleGenerateAiPitch}
+                    disabled={aiGeneratingPitch}
+                    className="btn btn-secondary"
+                    style={{ fontSize: '0.75rem', padding: '0.2rem 0.6rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}
+                    id="btn-ai-generate-pitch"
+                  >
+                    <Sparkles size={12} color="var(--color-brand)" />
+                    {aiGeneratingPitch ? 'Generating...' : '✨ AI Generate Pitch'}
+                  </button>
+                </div>
                 <textarea
                   rows={4}
                   required

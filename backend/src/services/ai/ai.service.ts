@@ -186,3 +186,27 @@ Provide a concise 2-sentence objective explanation.`;
     aiExplanation: aiText.content.trim(),
   };
 }
+
+export async function generatePitchProposalWithAI(
+  userId: string,
+  campaignData: { title: string; objective?: string; categories?: string[]; description?: string; cpmRate?: number },
+  creatorProfile: { handle: string; categories?: string[]; bio?: string }
+) {
+  const prompt = `Write an authentic, compelling 2-sentence influencer pitch for applying to this performance video campaign:
+Campaign Title: ${campaignData.title}
+Campaign Objective: ${campaignData.objective || campaignData.description || 'Verified CPM engagement'}
+Categories: ${(campaignData.categories || []).join(', ') || 'General'}
+Creator: @${creatorProfile.handle} (${(creatorProfile.categories || []).join(', ') || 'Video Creator'})
+Pitch should be professional, creative, highlight engagement, and promise authentic viewer retention.
+Output only the pitch text, no quotes or prefix.`;
+
+  const aiText = await aiProvider.generateText({
+    userPrompt: prompt,
+    temperature: 0.7,
+  });
+
+  return {
+    pitch: aiText.content.replace(/^"|"$/g, '').trim(),
+    suggestedRate: campaignData.cpmRate || 50,
+  };
+}

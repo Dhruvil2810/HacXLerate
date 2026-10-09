@@ -34,3 +34,20 @@ export async function adminAdjustCredits(req: Request, res: Response, next: Next
     next(error);
   }
 }
+
+export async function topUpCredits(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const userId = req.user!.userId;
+    const amount = Number(req.body.amount || 2500);
+    const result = await creditService.recordCreditTransaction({
+      userId,
+      amount,
+      type: 'CREDIT_GRANT',
+      description: `User top-up deposit (+${amount.toLocaleString()} Credits)`,
+    });
+    const wallet = await creditService.getUserWallet(userId);
+    sendSuccess(res, { wallet, transaction: result, message: `Successfully deposited ${amount} credits` }, 200);
+  } catch (error) {
+    next(error);
+  }
+}

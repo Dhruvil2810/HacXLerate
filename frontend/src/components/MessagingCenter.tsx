@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { ConversationItem, MessageItem } from '../types/marketplace';
+import { apiRequest } from '../services/api';
 import { 
   Send, 
   CheckCheck,
@@ -8,37 +9,83 @@ import {
 } from 'lucide-react';
 
 export const MessagingCenter: React.FC = () => {
-  const { user } = useAuth();
-  const [conversations] = useState<ConversationItem[]>([]);
+  const { user, token } = useAuth();
+  const [conversations, setConversations] = useState<ConversationItem[]>([]);
   const [activeConvId, setActiveConvId] = useState<string>('');
   const [messagesMap, setMessagesMap] = useState<Record<string, MessageItem[]>>({});
   const [newMessage, setNewMessage] = useState('');
+  const [sending, setSending] = useState(false);
+
+  useEffect(() => {
+    const loadConversations = async () => {
+      if (!token) return;
+      try {
+        const res = await apiRequest<{ conversations: ConversationItem[] }>('/messages/conversations', {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.success && res.data?.conversations) {
+          setConversations(res.data.conversations);
+          if (res.data.conversations.length > 0 && !activeConvId) {
+            setActiveConvId(res.data.conversations[0].conversationId);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load conversations', err);
+      }
+    };
+    loadConversations();
+  }, [token]);
+
+  useEffect(() => {
+    if (!activeConvId || !token) return;
+    const loadThread = async () => {
+      try {
+        const res = await apiRequest<{ messages: MessageItem[] }>(`/messages/conversations/${activeConvId}/messages`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.success && res.data && res.data.messages) {
+          const msgs = res.data.messages;
+          setMessagesMap((prev) => ({
+            ...prev,
+            [activeConvId]: msgs,
+          }));
+        }
+      } catch (err) {
+        console.error('Failed to load thread messages', err);
+      }
+    };
+    loadThread();
+  }, [activeConvId, token]);
 
   const activeMessages = activeConvId ? (messagesMap[activeConvId] || []) : [];
   const activeConversation = conversations.find((c) => c.conversationId === activeConvId);
 
-  const handleSendMessage = (e: React.FormEvent) => {
+  const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newMessage.trim() || !activeConvId) return;
+    if (!newMessage.trim() || !activeConvId || !token || sending) return;
 
-    const newMsg: MessageItem = {
-      id: `msg_${Date.now()}`,
-      conversationId: activeConvId,
-      senderId: user?.id || 'current_user',
-      content: newMessage.trim(),
-      createdAt: 'Just now',
-      sender: {
-        id: user?.id || 'current_user',
-        name: user?.name || 'You',
-      },
-    };
+    setSending(true);
+    const content = newMessage.trim();
+    try {
+      const res = await apiRequest<{ message: MessageItem }>(`/messages/conversations/${activeConvId}/messages`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ content }),
+      });
 
-    setMessagesMap((prev) => ({
-      ...prev,
-      [activeConvId]: [...(prev[activeConvId] || []), newMsg],
-    }));
-
-    setNewMessage('');
+      if (res.success && res.data?.message) {
+        const sent = res.data.message;
+        setMessagesMap((prev) => ({
+          ...prev,
+          [activeConvId]: [...(prev[activeConvId] || []), sent],
+        }));
+        setNewMessage('');
+      }
+    } catch (err) {
+      console.error('Failed to send message', err);
+    } finally {
+      setSending(false);
+    }
   };
 
   return (

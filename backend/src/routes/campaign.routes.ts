@@ -9,6 +9,7 @@ campaignRouter.get('/marketplace', optionalAuthenticate, campaignController.getM
 
 // Brand campaign management
 campaignRouter.get('/brand', authenticate, requireRole(['BRAND']), campaignController.getBrandCampaigns);
+campaignRouter.get('/my', authenticate, requireRole(['BRAND']), campaignController.getBrandCampaigns);
 campaignRouter.post('/', authenticate, requireRole(['BRAND']), campaignController.createCampaign);
 campaignRouter.get('/:id', optionalAuthenticate, campaignController.getCampaignDetails);
 

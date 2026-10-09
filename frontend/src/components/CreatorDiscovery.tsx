@@ -122,12 +122,12 @@ export const CreatorDiscovery: React.FC = () => {
 
     try {
       // Send direct invitation message
-      await apiRequest('/messages', {
+      await apiRequest('/messages/conversations', {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
         body: JSON.stringify({
-          recipientId: selectedCreator.userId,
-          content: inviteMessage || `Hi @${selectedCreator.handle}, we would love to invite you to collaborate on our upcoming AI creative brief!`,
+          recipientUserId: selectedCreator.userId,
+          initialMessage: inviteMessage || `Hi @${selectedCreator.handle}, we would love to invite you to collaborate on our upcoming AI creative brief!`,
         }),
       });
 

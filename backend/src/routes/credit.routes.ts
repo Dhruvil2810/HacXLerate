@@ -8,3 +8,4 @@ creditRouter.use(authenticate);
 
 creditRouter.get('/balance', creditController.getBalance);
 creditRouter.get('/ledger', creditController.getLedger);
+creditRouter.post('/top-up', creditController.topUpCredits);

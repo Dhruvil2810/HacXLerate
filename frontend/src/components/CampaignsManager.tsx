@@ -205,15 +205,37 @@ export const CampaignsManager: React.FC = () => {
     }
   };
 
-  const handleApplicationDecision = (appId: string, decision: 'ACCEPTED' | 'REJECTED') => {
-    setApplicants((prev) =>
-      prev.map((app) => (app.id === appId ? { ...app, status: decision } : app))
-    );
+  const handleApplicationDecision = async (appId: string, decision: 'ACCEPTED' | 'REJECTED') => {
+    if (!selectedCampaign || !token) return;
+    try {
+      await apiRequest(`/campaigns/${selectedCampaign.id}/applications/${appId}/decision`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ status: decision }),
+      });
+      setApplicants((prev) =>
+        prev.map((app) => (app.id === appId ? { ...app, status: decision } : app))
+      );
+    } catch (err: any) {
+      alert(`Failed to update application: ${err.message || 'Server error'}`);
+    }
   };
 
-  const openApplicantsView = (camp: Campaign) => {
+  const openApplicantsView = async (camp: Campaign) => {
     setSelectedCampaign(camp);
     setIsApplicantsModalOpen(true);
+    setApplicants([]);
+    if (!token) return;
+    try {
+      const res = await apiRequest<{ campaign: any }>(`/campaigns/${camp.id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.success && res.data?.campaign?.applications) {
+        setApplicants(res.data.campaign.applications);
+      }
+    } catch (err) {
+      console.error('Failed to load applications for campaign', err);
+    }
   };
 
   return (
@@ -646,57 +668,73 @@ export const CampaignsManager: React.FC = () => {
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              {applicants.map((app) => (
-                <div key={app.id} style={{
-                  padding: '1rem',
-                  border: '1px solid var(--border-subtle)',
-                  borderRadius: 'var(--radius-lg)',
-                  backgroundColor: 'var(--bg-subtle)',
+              {applicants.length === 0 ? (
+                <div style={{
+                  padding: '2.5rem 1rem',
+                  textAlign: 'center',
+                  color: 'var(--text-muted)',
+                  border: '1px dashed var(--border-default)',
+                  borderRadius: 'var(--radius-lg)'
                 }}>
-                  <div className="flex items-center justify-between" style={{ marginBottom: '0.5rem' }}>
-                    <div>
-                      <strong>{app.creator.user.name}</strong>{' '}
-                      <span style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>@{app.creator.handle}</span>
-                    </div>
-                    <span className={`badge ${app.status === 'ACCEPTED' ? 'badge-verified' : app.status === 'REJECTED' ? 'badge-neutral' : 'badge-selfreported'}`}>
-                      {app.status}
-                    </span>
-                  </div>
-
-                  <p style={{ fontSize: '0.85rem', marginBottom: '0.75rem', lineHeight: '1.4' }}>
-                    "{app.pitch}"
+                  <Users size={32} style={{ margin: '0 auto 0.5rem', opacity: 0.5 }} />
+                  <p style={{ fontWeight: 500 }}>No Applications Received Yet</p>
+                  <p style={{ fontSize: '0.8rem', marginTop: '0.25rem' }}>
+                    Creators browsing the marketplace will appear here once they submit their pitch.
                   </p>
-
-                  <div className="flex items-center justify-between" style={{ paddingTop: '0.5rem', borderTop: '1px solid var(--border-subtle)' }}>
-                    <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                      Proposed Rate: <strong>₹{app.proposedRate} / 1k views</strong>
+                </div>
+              ) : (
+                applicants.map((app) => (
+                  <div key={app.id} style={{
+                    padding: '1rem',
+                    border: '1px solid var(--border-subtle)',
+                    borderRadius: 'var(--radius-lg)',
+                    backgroundColor: 'var(--bg-subtle)',
+                  }}>
+                    <div className="flex items-center justify-between" style={{ marginBottom: '0.5rem' }}>
+                      <div>
+                        <strong>{app.creator?.user?.name || 'Creator'}</strong>{' '}
+                        <span style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>@{app.creator?.handle || 'creator'}</span>
+                      </div>
+                      <span className={`badge ${app.status === 'ACCEPTED' ? 'badge-verified' : app.status === 'REJECTED' ? 'badge-neutral' : 'badge-selfreported'}`}>
+                        {app.status}
+                      </span>
                     </div>
 
-                    {app.status === 'PENDING' ? (
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => handleApplicationDecision(app.id, 'REJECTED')}
-                          className="btn btn-secondary"
-                          style={{ fontSize: '0.75rem', padding: '0.3rem 0.6rem' }}
-                        >
-                          <UserX size={12} /> Decline
-                        </button>
-                        <button
-                          onClick={() => handleApplicationDecision(app.id, 'ACCEPTED')}
-                          className="btn btn-primary"
-                          style={{ fontSize: '0.75rem', padding: '0.3rem 0.6rem' }}
-                        >
-                          <UserCheck size={12} /> Accept Creator
-                        </button>
+                    <p style={{ fontSize: '0.85rem', marginBottom: '0.75rem', lineHeight: '1.4' }}>
+                      "{app.pitch}"
+                    </p>
+
+                    <div className="flex items-center justify-between" style={{ paddingTop: '0.5rem', borderTop: '1px solid var(--border-subtle)' }}>
+                      <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                        Proposed Rate: <strong>₹{app.proposedRate} / 1k views</strong>
                       </div>
-                    ) : (
-                      <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>
-                        {app.status === 'ACCEPTED' ? '✓ Added to Campaign' : 'Application Closed'}
-                      </span>
-                    )}
+
+                      {app.status === 'PENDING' ? (
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => handleApplicationDecision(app.id, 'REJECTED')}
+                            className="btn btn-secondary"
+                            style={{ fontSize: '0.75rem', padding: '0.3rem 0.6rem' }}
+                          >
+                            <UserX size={12} /> Decline
+                          </button>
+                          <button
+                            onClick={() => handleApplicationDecision(app.id, 'ACCEPTED')}
+                            className="btn btn-primary"
+                            style={{ fontSize: '0.75rem', padding: '0.3rem 0.6rem' }}
+                          >
+                            <UserCheck size={12} /> Accept Creator
+                          </button>
+                        </div>
+                      ) : (
+                        <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>
+                          {app.status === 'ACCEPTED' ? '✓ Added to Campaign' : 'Application Closed'}
+                        </span>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
+                ))
+              )}
             </div>
           </div>
         </div>

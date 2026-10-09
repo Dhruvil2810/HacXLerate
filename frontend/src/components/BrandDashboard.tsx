@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { ProductsManager } from './ProductsManager';
 import { CampaignsManager } from './CampaignsManager';
@@ -6,6 +6,7 @@ import { CreatorDiscovery } from './CreatorDiscovery';
 import { MessagingCenter } from './MessagingCenter';
 import { WalletLedgerView } from './WalletLedgerView';
 import { CampaignPerformanceView } from './CampaignPerformanceView';
+import { apiRequest } from '../services/api';
 import { 
   Briefcase, 
   Users, 
@@ -27,10 +28,47 @@ interface BrandDashboardProps {
 type BrandTab = 'overview' | 'products' | 'campaigns' | 'performance' | 'creators' | 'messages' | 'credits';
 
 export const BrandDashboard: React.FC<BrandDashboardProps> = ({ onOpenOnboarding }) => {
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   const profile = user?.brandProfile;
   const wallet = user?.creditWallet;
   const [activeTab, setActiveTab] = useState<BrandTab>('overview');
+  const [brandStats, setBrandStats] = useState({
+    totalCampaigns: 0,
+    activeCampaigns: 0,
+    partneredCreators: 0,
+    totalVerifiedViews: 0,
+    averageCpm: 0
+  });
+
+  useEffect(() => {
+    const fetchBrandMetrics = async () => {
+      if (!token) return;
+      try {
+        const res = await apiRequest<any>('/performance/brand/analytics', {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (res.success && res.data) {
+          const data = res.data;
+          const active = data.campaignsPacing?.filter((c: any) => c.status === 'ACTIVE').length || 0;
+          const creatorsSet = new Set();
+          (data.campaignsPacing || []).forEach((c: any) => {
+            if (c.creatorsCount) creatorsSet.add(c.id);
+          });
+
+          setBrandStats({
+            totalCampaigns: data.totalCampaigns || 0,
+            activeCampaigns: active,
+            partneredCreators: data.campaignsPacing?.reduce((sum: number, c: any) => sum + (c.creatorsCount || 0), 0) || 0,
+            totalVerifiedViews: data.totalVerifiedViews || 0,
+            averageCpm: data.averageCpm || 0
+          });
+        }
+      } catch (err) {
+        console.error('Failed to load brand performance stats', err);
+      }
+    };
+    fetchBrandMetrics();
+  }, [token]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
@@ -150,10 +188,10 @@ export const BrandDashboard: React.FC<BrandDashboardProps> = ({ onOpenOnboarding
                 <Coins size={16} color="var(--color-brand)" />
               </div>
               <div className="metric-value">
-                {wallet?.balance.toLocaleString() || '5,000'}
+                {wallet?.balance !== undefined ? wallet.balance.toLocaleString() : '0'}
               </div>
               <div className="metric-delta" style={{ color: 'var(--text-muted)' }}>
-                Reserved in Escrow: {wallet?.reservedBalance || '0'}
+                Reserved in Escrow: {wallet?.reservedBalance !== undefined ? wallet.reservedBalance.toLocaleString() : '0'}
               </div>
             </div>
 
@@ -163,10 +201,10 @@ export const BrandDashboard: React.FC<BrandDashboardProps> = ({ onOpenOnboarding
                 <BarChart3 size={16} color="var(--color-info)" />
               </div>
               <div className="metric-value">
-                2
+                {brandStats.activeCampaigns}
               </div>
               <div className="metric-delta" style={{ color: 'var(--color-success)' }}>
-                +1 Scheduled
+                {brandStats.totalCampaigns} Total Created
               </div>
             </div>
 
@@ -176,10 +214,10 @@ export const BrandDashboard: React.FC<BrandDashboardProps> = ({ onOpenOnboarding
                 <Users size={16} color="var(--color-brand)" />
               </div>
               <div className="metric-value">
-                8
+                {brandStats.partneredCreators}
               </div>
               <div className="metric-delta" style={{ color: 'var(--text-muted)' }}>
-                3 Pending Applications
+                {brandStats.partneredCreators > 0 ? 'Active Influencer Roster' : 'Browse to Invite Creators'}
               </div>
             </div>
 
@@ -189,10 +227,12 @@ export const BrandDashboard: React.FC<BrandDashboardProps> = ({ onOpenOnboarding
                 <TrendingUp size={16} color="var(--color-success)" />
               </div>
               <div className="metric-value">
-                245.8K
+                {brandStats.totalVerifiedViews >= 1000 
+                  ? `${(brandStats.totalVerifiedViews / 1000).toFixed(1)}K` 
+                  : brandStats.totalVerifiedViews.toLocaleString()}
               </div>
               <div className="metric-delta" style={{ color: 'var(--color-success)' }}>
-                ✓ Platform Verified
+                {brandStats.totalVerifiedViews > 0 ? '✓ Platform Verified' : 'Awaiting Content Views'}
               </div>
             </div>
           </div>
