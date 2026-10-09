@@ -7,18 +7,34 @@ import { sendError } from '../utils/response.util.js';
 export const helmetMiddleware = helmet({
   contentSecurityPolicy: env.NODE_ENV === 'production' ? undefined : false,
   crossOriginEmbedderPolicy: false,
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
 });
 
 export const corsMiddleware = cors({
   origin: (origin, callback) => {
     // Allow requests with no origin (e.g. mobile apps, curl, server-to-server)
     if (!origin) return callback(null, true);
-    
-    const allowedOrigins = [env.FRONTEND_URL, env.CORS_ORIGIN, 'http://localhost:3000', 'http://localhost:5173'];
-    if (allowedOrigins.includes(origin) || env.NODE_ENV === 'development') {
+
+    const configuredOrigins = [
+      env.FRONTEND_URL,
+      ...env.CORS_ORIGIN.split(',').map((s) => s.trim()),
+      'http://localhost:3000',
+      'http://localhost:5173',
+    ]
+      .filter(Boolean)
+      .map((url) => url.replace(/\/+$/, ''));
+
+    const normalizedOrigin = origin.replace(/\/+$/, '');
+
+    if (
+      env.CORS_ORIGIN === '*' ||
+      configuredOrigins.includes(normalizedOrigin) ||
+      env.NODE_ENV === 'development'
+    ) {
       return callback(null, true);
     }
-    return callback(new Error('CORS policy: Not allowed by Access-Control-Allow-Origin'));
+
+    return callback(new Error(`CORS policy: Origin ${origin} not allowed by Access-Control-Allow-Origin`));
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],

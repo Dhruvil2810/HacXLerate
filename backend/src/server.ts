@@ -11,10 +11,11 @@ async function bootstrap() {
 
   const app = createApp();
 
-  const server = app.listen(env.PORT, () => {
-    logger.info(`🚀 Server running on http://localhost:${env.PORT}`);
-    logger.info(`📋 Health check: http://localhost:${env.PORT}/health`);
-    logger.info(`🔗 API v1 root: http://localhost:${env.PORT}/api/v1`);
+  const HOST = '0.0.0.0';
+  const server = app.listen(env.PORT, HOST, () => {
+    logger.info(`🚀 Server running on port ${env.PORT} (host: ${HOST}) in ${env.NODE_ENV} mode`);
+    logger.info(`📋 Health check: http://${HOST}:${env.PORT}/health`);
+    logger.info(`🔗 API v1 root: http://${HOST}:${env.PORT}/api/v1`);
   });
 
   // Graceful shutdown

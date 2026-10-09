@@ -12,8 +12,11 @@
     "dev:frontend": "npm --prefix frontend run dev",
     "build:backend": "npm --prefix backend run build",
     "build:frontend": "npm --prefix frontend run build",
+    "start:backend": "npm --prefix backend start",
     "prisma:generate": "npm --prefix backend run prisma:generate",
-    "prisma:push": "npm --prefix backend run prisma:push"
+    "prisma:deploy": "npm --prefix backend run prisma:deploy",
+    "prisma:push": "npm --prefix backend run prisma:push",
+    "prisma:seed": "npm --prefix backend run prisma:seed"
   },
   "keywords": [
     "creator-economy",

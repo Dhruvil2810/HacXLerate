@@ -5,19 +5,26 @@ import { env } from '../config/env.js';
 
 export const healthRouter = Router();
 
-healthRouter.get('/health', async (req: Request, res: Response) => {
+// Render and uptime monitoring health check
+healthRouter.get(['/health', '/live', '/ready'], async (req: Request, res: Response) => {
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+
   let dbStatus = 'disconnected';
+  let dbHealthy = false;
   try {
     await prisma.$queryRaw`SELECT 1`;
     dbStatus = 'connected';
+    dbHealthy = true;
   } catch {
     dbStatus = 'unreachable';
+    dbHealthy = false;
   }
 
   const memoryUsage = process.memoryUsage();
+  const isStrict = req.query.strict === 'true';
 
-  return sendSuccess(res, {
-    status: 'ok',
+  const payload = {
+    status: dbHealthy || !isStrict ? 'ok' : 'degraded',
     service: 'CreatorOS API',
     version: '1.0.0',
     environment: env.NODE_ENV,
@@ -29,5 +36,11 @@ healthRouter.get('/health', async (req: Request, res: Response) => {
       heapUsedMb: Math.round(memoryUsage.heapUsed / 1024 / 1024),
       heapTotalMb: Math.round(memoryUsage.heapTotal / 1024 / 1024),
     },
-  });
+  };
+
+  if (isStrict && !dbHealthy) {
+    return res.status(503).json({ success: false, data: payload });
+  }
+
+  return sendSuccess(res, payload, 200);
 });
