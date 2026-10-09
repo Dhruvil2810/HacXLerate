@@ -1,12 +1,14 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { apiRequest } from '../services/api';
 import { 
   Coins, 
   ArrowUpRight, 
   ArrowDownLeft, 
   ShieldCheck, 
   Filter, 
-  Lock
+  Lock,
+  FileText
 } from 'lucide-react';
 
 interface LedgerEntry {
@@ -19,49 +21,28 @@ interface LedgerEntry {
   createdAt: string;
 }
 
-const DEMO_LEDGER_ENTRIES: LedgerEntry[] = [
-  {
-    id: 'led_1',
-    amount: -4000,
-    type: 'CAMPAIGN_RESERVATION',
-    description: 'Budget escrow reservation for campaign: "Creator Studio Mechanical Keyboard Q4 Launch"',
-    referenceType: 'Campaign',
-    referenceId: 'camp_demo_1',
-    createdAt: 'Yesterday, 14:32',
-  },
-  {
-    id: 'led_2',
-    amount: -10,
-    type: 'AI_USAGE',
-    description: 'AI Brief Generation & Semantic Creator Match (openrouter/free)',
-    referenceType: 'AIUsage',
-    referenceId: 'ai_req_902',
-    createdAt: '2 days ago',
-  },
-  {
-    id: 'led_3',
-    amount: 1500,
-    type: 'CAMPAIGN_REWARD',
-    description: 'Performance payout for 30,000 verified incremental YouTube views (CPM ₹50)',
-    referenceType: 'PublishedContent',
-    referenceId: 'pub_video_421',
-    createdAt: '3 days ago',
-  },
-  {
-    id: 'led_4',
-    amount: 5000,
-    type: 'CREDIT_GRANT',
-    description: 'Welcome onboarding credit grant (Platform verified)',
-    referenceType: 'UserRegistration',
-    createdAt: '5 days ago',
-  },
-];
-
 export const WalletLedgerView: React.FC = () => {
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   const wallet = user?.creditWallet;
-  const [entries] = useState<LedgerEntry[]>(DEMO_LEDGER_ENTRIES);
+  const [entries, setEntries] = useState<LedgerEntry[]>([]);
   const [selectedType, setSelectedType] = useState<string>('ALL');
+
+  useEffect(() => {
+    async function loadLedger() {
+      if (!token) return;
+      try {
+        const res = await apiRequest<{ entries: LedgerEntry[] }>('/credits/ledger', {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.success && res.data?.entries) {
+          setEntries(res.data.entries);
+        }
+      } catch {
+        setEntries([]);
+      }
+    }
+    loadLedger();
+  }, [token]);
 
   const filteredEntries = entries.filter((e) => {
     if (selectedType === 'ALL') return true;
@@ -108,7 +89,7 @@ export const WalletLedgerView: React.FC = () => {
               Available Balance
             </div>
             <div style={{ fontSize: '2.25rem', fontWeight: 800, color: 'var(--color-brand)' }}>
-              {wallet?.balance.toLocaleString() || '5,000'} <span style={{ fontSize: '1rem', fontWeight: 600 }}>Credits</span>
+              {wallet?.balance ? wallet.balance.toLocaleString() : '0'} <span style={{ fontSize: '1rem', fontWeight: 600 }}>Credits</span>
             </div>
           </div>
         </div>
@@ -122,7 +103,7 @@ export const WalletLedgerView: React.FC = () => {
             <Coins size={16} color="var(--color-brand)" />
           </div>
           <div className="metric-value">
-            {wallet?.balance.toLocaleString() || '5,000'}
+            {wallet?.balance ? wallet.balance.toLocaleString() : '0'}
           </div>
           <div className="metric-delta" style={{ color: 'var(--color-success)' }}>
             Ready for campaign use
@@ -135,7 +116,7 @@ export const WalletLedgerView: React.FC = () => {
             <Lock size={16} color="var(--color-info)" />
           </div>
           <div className="metric-value">
-            {wallet?.reservedBalance.toLocaleString() || '4,000'}
+            {wallet?.reservedBalance ? wallet.reservedBalance.toLocaleString() : '0'}
           </div>
           <div className="metric-delta" style={{ color: 'var(--text-muted)' }}>
             Committed to active campaigns
@@ -144,27 +125,27 @@ export const WalletLedgerView: React.FC = () => {
 
         <div className="metric-box">
           <div className="flex items-center justify-between">
-            <span className="metric-label">Lifetime Earned</span>
+            <span className="metric-label">Total Allocated</span>
             <ArrowUpRight size={16} color="var(--color-success)" />
           </div>
           <div className="metric-value">
-            {(wallet ? wallet.balance + (wallet.reservedBalance || 0) : 9000).toLocaleString()}
+            {((wallet?.balance || 0) + (wallet?.reservedBalance || 0)).toLocaleString()}
           </div>
           <div className="metric-delta" style={{ color: 'var(--color-success)' }}>
-            From grants & rewards
+            Total credit pool
           </div>
         </div>
 
         <div className="metric-box">
           <div className="flex items-center justify-between">
-            <span className="metric-label">Lifetime Spent</span>
+            <span className="metric-label">Ledger Transactions</span>
             <ArrowDownLeft size={16} color="var(--text-muted)" />
           </div>
           <div className="metric-value">
-            1,250
+            {entries.length}
           </div>
           <div className="metric-delta" style={{ color: 'var(--text-muted)' }}>
-            Campaigns & AI usage
+            Verified double-entry events
           </div>
         </div>
       </div>
@@ -202,52 +183,62 @@ export const WalletLedgerView: React.FC = () => {
           </div>
         </div>
 
-        <div className="table-container">
-          <table>
-            <thead>
-              <tr>
-                <th>Timestamp</th>
-                <th>Transaction Type</th>
-                <th>Description</th>
-                <th>Reference</th>
-                <th style={{ textAlign: 'right' }}>Amount</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredEntries.map((entry) => {
-                const isPositive = entry.amount > 0;
+        {filteredEntries.length === 0 ? (
+          <div style={{ padding: '3rem 1.5rem', textAlign: 'center' }}>
+            <FileText size={36} color="var(--text-muted)" style={{ margin: '0 auto 0.75rem' }} />
+            <h4 style={{ color: 'var(--text-muted)' }}>No Ledger Transactions Found</h4>
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+              Transactions will be permanently logged here as grants, AI actions, or campaign payouts occur.
+            </p>
+          </div>
+        ) : (
+          <div className="table-container">
+            <table>
+              <thead>
+                <tr>
+                  <th>Timestamp</th>
+                  <th>Transaction Type</th>
+                  <th>Description</th>
+                  <th>Reference</th>
+                  <th style={{ textAlign: 'right' }}>Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredEntries.map((entry) => {
+                  const isPositive = entry.amount > 0;
 
-                return (
-                  <tr key={entry.id}>
-                    <td><code>{entry.createdAt}</code></td>
-                    <td>{getTransactionBadge(entry.type)}</td>
-                    <td style={{ maxWidth: '400px' }}>
-                      <div style={{ fontWeight: 500 }}>{entry.description}</div>
-                    </td>
-                    <td>
-                      {entry.referenceType ? (
-                        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                          {entry.referenceType} ({entry.referenceId})
+                  return (
+                    <tr key={entry.id}>
+                      <td><code>{entry.createdAt}</code></td>
+                      <td>{getTransactionBadge(entry.type)}</td>
+                      <td style={{ maxWidth: '400px' }}>
+                        <div style={{ fontWeight: 500 }}>{entry.description}</div>
+                      </td>
+                      <td>
+                        {entry.referenceType ? (
+                          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                            {entry.referenceType} ({entry.referenceId})
+                          </span>
+                        ) : (
+                          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>—</span>
+                        )}
+                      </td>
+                      <td style={{ textAlign: 'right' }}>
+                        <span style={{
+                          fontWeight: 700,
+                          fontSize: '0.95rem',
+                          color: isPositive ? 'var(--color-success)' : 'var(--text-primary)',
+                        }}>
+                          {isPositive ? `+${entry.amount.toLocaleString()}` : `${entry.amount.toLocaleString()}`} Credits
                         </span>
-                      ) : (
-                        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>—</span>
-                      )}
-                    </td>
-                    <td style={{ textAlign: 'right' }}>
-                      <span style={{
-                        fontWeight: 700,
-                        fontSize: '0.95rem',
-                        color: isPositive ? 'var(--color-success)' : 'var(--text-primary)',
-                      }}>
-                        {isPositive ? `+${entry.amount.toLocaleString()}` : `${entry.amount.toLocaleString()}`} Credits
-                      </span>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );

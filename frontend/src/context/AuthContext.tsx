@@ -143,42 +143,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     localStorage.setItem(USER_KEY, JSON.stringify(updatedUser));
   };
 
-  // Demo account instant login for zero-friction evaluation
-  const demoLogin = (role: RoleType) => {
-    const demoUser: User = {
-      id: `demo_${role.toLowerCase()}_101`,
-      email: `demo.${role.toLowerCase()}@creatoros.io`,
-      name: role === 'BRAND' ? 'Nexus Tech Labs' : role === 'CREATOR' ? 'Alex Rivera (Tech Reviews)' : 'Admin Operator',
-      status: 'ACTIVE',
-      roles: ['BRAND', 'CREATOR', 'ADMIN'],
-      activeRole: role,
-      brandProfile: {
-        id: 'bp_demo_1',
-        userId: `demo_${role.toLowerCase()}_101`,
-        companyName: 'Nexus Tech Labs',
-        industry: 'Consumer Electronics & SaaS',
-        websiteUrl: 'https://nexustechlabs.io',
-        description: 'Next-generation creator productivity hardware and developer tools.',
-      },
-      creatorProfile: {
-        id: 'cp_demo_1',
-        userId: `demo_${role.toLowerCase()}_101`,
-        handle: 'alexrivera_tech',
-        bio: 'In-depth tech breakdowns, developer productivity, and consumer hardware testing. 250K+ combined audience.',
-        location: 'San Francisco, CA',
-        categories: ['Technology', 'Software', 'Gadgets'],
-        skills: ['4K Video Production', 'Benchmark Testing', 'Shorts/Reels'],
-        tools: ['Final Cut Pro', 'DaVinci Resolve', 'Sony A7S III'],
-        contentTypes: ['Long-form Review', 'Dedicated Video', 'Product Integration'],
-        isVerified: true,
-      },
-      creditWallet: {
-        balance: role === 'BRAND' ? 12500 : 2850,
-        reservedBalance: role === 'BRAND' ? 4000 : 0,
-      },
-    };
+  // Real test account login for zero-friction evaluation
+  const demoLogin = async (role: RoleType) => {
+    let email = 'creator@creatoros.io';
+    if (role === 'BRAND') email = 'brand@creatoros.io';
+    if (role === 'ADMIN') email = 'admin@creatoros.io';
 
-    saveSession('mock_jwt_demo_token_creatoros', demoUser);
+    await login(email, 'Password123!');
   };
 
   return (

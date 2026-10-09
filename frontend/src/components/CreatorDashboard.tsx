@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { CampaignDiscovery } from './CampaignDiscovery';
 import { MessagingCenter } from './MessagingCenter';
@@ -6,6 +6,7 @@ import { WalletLedgerView } from './WalletLedgerView';
 import { YouTubeAnalyticsView } from './YouTubeAnalyticsView';
 import { CampaignPerformanceView } from './CampaignPerformanceView';
 import { ContentSubmissionModal } from './ContentSubmissionModal';
+import { PortfolioManager } from './PortfolioManager';
 import { 
   Video, 
   Youtube, 
@@ -16,21 +17,63 @@ import {
   Zap,
   LayoutDashboard,
   MessageSquare,
-  ShieldCheck
+  ShieldCheck,
+  Sparkles
 } from 'lucide-react';
+import { apiRequest } from '../services/api';
 
 interface CreatorDashboardProps {
   onOpenOnboarding: () => void;
 }
 
-type CreatorTab = 'overview' | 'youtube' | 'performance' | 'discover' | 'messages' | 'credits';
+type CreatorTab = 'overview' | 'portfolio' | 'youtube' | 'performance' | 'discover' | 'messages' | 'credits';
 
 export const CreatorDashboard: React.FC<CreatorDashboardProps> = ({ onOpenOnboarding }) => {
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   const profile = user?.creatorProfile;
   const wallet = user?.creditWallet;
   const [activeTab, setActiveTab] = useState<CreatorTab>('overview');
   const [isSubmitModalOpen, setIsSubmitModalOpen] = useState(false);
+  const [stats, setStats] = useState({
+    activeCampaigns: 0,
+    totalViews: 0,
+    totalEarnings: 0,
+    cpmAvg: 0
+  });
+
+  useEffect(() => {
+    // Fetch live dashboard metrics
+    const fetchMetrics = async () => {
+      if (!token) return;
+      try {
+        const [perfRes, ytRes] = await Promise.allSettled([
+          apiRequest<any>('/performance/my-content', { headers: { Authorization: `Bearer ${token}` } }),
+          apiRequest<any>('/social/youtube/channel', { headers: { Authorization: `Bearer ${token}` } })
+        ]);
+        
+        let totalViews = 0;
+        let activeCamps = 0;
+        if (perfRes.status === 'fulfilled' && perfRes.value.success && Array.isArray(perfRes.value.data)) {
+          const contents = perfRes.value.data;
+          activeCamps = contents.length;
+          totalViews = contents.reduce((sum: number, c: any) => sum + (Number(c.currentViews) || 0), 0);
+        }
+        if (ytRes.status === 'fulfilled' && ytRes.value.success && ytRes.value.data?.totalViews) {
+          totalViews = Math.max(totalViews, Number(ytRes.value.data.totalViews));
+        }
+
+        setStats({
+          activeCampaigns: activeCamps,
+          totalViews,
+          totalEarnings: wallet?.balance || 0,
+          cpmAvg: activeCamps > 0 ? 50 : 0
+        });
+      } catch (err) {
+        console.error('Failed to load dashboard metrics', err);
+      }
+    };
+    fetchMetrics();
+  }, [wallet?.balance, token]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
@@ -48,6 +91,15 @@ export const CreatorDashboard: React.FC<CreatorDashboardProps> = ({ onOpenOnboar
           style={{ fontSize: '0.825rem', padding: '0.45rem 0.9rem' }}
         >
           <LayoutDashboard size={14} /> Overview
+        </button>
+
+        <button
+          onClick={() => setActiveTab('portfolio')}
+          className={`btn ${activeTab === 'portfolio' ? 'btn-primary' : 'btn-secondary'}`}
+          style={{ fontSize: '0.825rem', padding: '0.45rem 0.9rem' }}
+          id="tab-creator-portfolio"
+        >
+          <Sparkles size={14} /> AI Portfolio & Workflows
         </button>
 
         <button
@@ -97,6 +149,7 @@ export const CreatorDashboard: React.FC<CreatorDashboardProps> = ({ onOpenOnboar
       </div>
 
       {/* Tab Views */}
+      {activeTab === 'portfolio' && <PortfolioManager />}
       {activeTab === 'youtube' && <YouTubeAnalyticsView />}
       {activeTab === 'performance' && (
         <CampaignPerformanceView
@@ -110,9 +163,9 @@ export const CreatorDashboard: React.FC<CreatorDashboardProps> = ({ onOpenOnboar
       {/* Content Submission Modal */}
       <ContentSubmissionModal
         isOpen={isSubmitModalOpen}
-        campaignId="camp_demo_1"
-        campaignTitle="Apex Pro ANC Wireless Earbuds Launch"
-        cpmRate={65}
+        campaignId=""
+        campaignTitle="Selected Performance Campaign"
+        cpmRate={50}
         onClose={() => setIsSubmitModalOpen(false)}
         onSuccess={() => {}}
       />
@@ -136,15 +189,18 @@ export const CreatorDashboard: React.FC<CreatorDashboardProps> = ({ onOpenOnboar
                     </span>
                   )}
                 </div>
-                <h2>@{profile?.handle || user?.name}</h2>
+                <h2>@{profile?.handle || user?.name || 'Creator'}</h2>
                 <p style={{ marginTop: '0.25rem' }}>
                   {profile?.location ? `${profile.location} • ` : ''}
-                  {profile?.categories?.length ? profile.categories.join(', ') : 'Tech & Reviews'}
+                  {profile?.categories?.length ? profile.categories.join(', ') : 'AI Video & Generative Media'}
                 </p>
               </div>
               <div className="flex items-center gap-3">
+                <button onClick={() => setActiveTab('portfolio')} className="btn btn-secondary" style={{ fontSize: '0.85rem' }}>
+                  <Sparkles size={14} /> Manage AI Portfolio
+                </button>
                 <button onClick={onOpenOnboarding} className="btn btn-secondary" style={{ fontSize: '0.85rem' }}>
-                  Edit Niches & Bio
+                  Edit Profile
                 </button>
                 <button onClick={() => setActiveTab('discover')} className="btn btn-primary" style={{ fontSize: '0.85rem' }}>
                   Browse Marketplace
@@ -161,10 +217,10 @@ export const CreatorDashboard: React.FC<CreatorDashboardProps> = ({ onOpenOnboar
                 <Coins size={16} color="var(--color-brand)" />
               </div>
               <div className="metric-value">
-                {wallet?.balance.toLocaleString() || '2,850'}
+                {wallet?.balance ? wallet.balance.toLocaleString() : '0'}
               </div>
-              <div className="metric-delta" style={{ color: 'var(--color-success)' }}>
-                +750 Credits this week
+              <div className="metric-delta" style={{ color: 'var(--color-brand)' }}>
+                Internal Credit Balance
               </div>
             </div>
 
@@ -174,36 +230,36 @@ export const CreatorDashboard: React.FC<CreatorDashboardProps> = ({ onOpenOnboar
                 <TrendingUp size={16} color="var(--color-success)" />
               </div>
               <div className="metric-value">
-                182.4K
+                {stats.totalViews > 1000 ? `${(stats.totalViews / 1000).toFixed(1)}K` : stats.totalViews}
               </div>
               <div className="metric-delta" style={{ color: 'var(--color-success)' }}>
-                ✓ Platform Verified (YouTube)
+                {stats.totalViews > 0 ? '✓ Live Platform Synced' : 'Connect YouTube to sync'}
               </div>
             </div>
 
             <div className="metric-box">
               <div className="flex items-center justify-between">
-                <span className="metric-label">Active Campaigns</span>
+                <span className="metric-label">Active Engagements</span>
                 <Video size={16} color="var(--color-info)" />
               </div>
               <div className="metric-value">
-                2
+                {stats.activeCampaigns}
               </div>
               <div className="metric-delta" style={{ color: 'var(--text-muted)' }}>
-                1 Under Brand Review
+                Active campaigns & projects
               </div>
             </div>
 
             <div className="metric-box">
               <div className="flex items-center justify-between">
-                <span className="metric-label">Historical CPM</span>
+                <span className="metric-label">Avg Reward CPM</span>
                 <Zap size={16} color="var(--color-warning)" />
               </div>
               <div className="metric-value">
-                ₹52.5
+                {stats.cpmAvg > 0 ? `₹${stats.cpmAvg}` : 'N/A'}
               </div>
               <div className="metric-delta" style={{ color: 'var(--text-muted)' }}>
-                Average across campaigns
+                Per 1,000 verified views
               </div>
             </div>
           </div>
@@ -223,16 +279,13 @@ export const CreatorDashboard: React.FC<CreatorDashboardProps> = ({ onOpenOnboar
                 <div>
                   <h4>YouTube Social Analytics Connector</h4>
                   <p style={{ fontSize: '0.85rem' }}>
-                    Channel connected via Google OAuth. Historical snapshots, audience retention, and incremental CPM view syncs enabled.
+                    Connect your YouTube channel to verify views and automatically earn performance-based CPM rewards.
                   </p>
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <span className="badge badge-verified">
-                  <CheckCircle2 size={12} /> OAuth Connected
-                </span>
-                <button className="btn btn-secondary" style={{ fontSize: '0.8rem', padding: '0.4rem 0.8rem' }}>
-                  Sync Now
+                <button onClick={() => setActiveTab('youtube')} className="btn btn-primary" style={{ fontSize: '0.8rem', padding: '0.4rem 0.8rem' }}>
+                  Manage YouTube Integration
                 </button>
               </div>
             </div>

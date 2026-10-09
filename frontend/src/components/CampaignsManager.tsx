@@ -9,69 +9,9 @@ import {
   X, 
   UserCheck,
   UserX,
-  Sparkles
+  Sparkles,
+  Target
 } from 'lucide-react';
-
-const INITIAL_DEMO_CAMPAIGNS: Campaign[] = [
-  {
-    id: 'camp_demo_1',
-    brandId: 'bp_demo_1',
-    productId: 'prod_demo_1',
-    title: 'Creator Studio Mechanical Keyboard Q4 Launch',
-    objective: 'Generate 100K+ verified views from developer and tech workspace creators.',
-    description: 'We are launching the Nexus Pro custom keyboard. We are seeking tech reviewers to produce dedicated 4K reviews showcasing build quality, acoustics, and software customization.',
-    budgetCredits: 4000,
-    allocatedCredits: 4000,
-    spentCredits: 2200,
-    rewardModel: 'CPM',
-    cpmRate: 55.0,
-    status: 'APPLICATIONS_OPEN',
-    contentPlatform: 'YOUTUBE',
-    creatorCategories: ['Technology', 'Hardware', 'Productivity'],
-    requiredSkills: ['4K Video Production', 'Sound Test'],
-    contentRequirements: 'Minimum 5-minute dedicated video with microphone sound test and software walkthrough.',
-    prohibitedContent: 'No sponsorships of competing keyboards in the same video.',
-    hashtags: ['#MechanicalKeyboard', '#DeskSetup', '#NexusPro'],
-    createdAt: new Date().toISOString(),
-    product: {
-      id: 'prod_demo_1',
-      name: 'Nexus Pro Mechanical Keyboard',
-      category: 'Hardware',
-    },
-    _count: {
-      applications: 4,
-      creators: 2,
-    },
-  },
-  {
-    id: 'camp_demo_2',
-    brandId: 'bp_demo_1',
-    productId: 'prod_demo_2',
-    title: 'Ultra-light Wireless Mouse Global Launch',
-    objective: 'Showcase low latency and ergonomics across gaming and design YouTube channels.',
-    description: 'Looking for creators to integrate AirGlide Mouse into their desk setups and workflow reviews.',
-    budgetCredits: 3500,
-    allocatedCredits: 3500,
-    spentCredits: 1750,
-    rewardModel: 'CPM',
-    cpmRate: 50.0,
-    status: 'LIVE',
-    contentPlatform: 'YOUTUBE',
-    creatorCategories: ['Gaming', 'Technology', 'Design'],
-    requiredSkills: ['Shorts / Reels', 'Product Integration'],
-    hashtags: ['#TechSetup', '#AirGlide'],
-    createdAt: new Date().toISOString(),
-    product: {
-      id: 'prod_demo_2',
-      name: 'AirGlide Wireless Productivity Mouse',
-      category: 'Peripherals',
-    },
-    _count: {
-      applications: 6,
-      creators: 3,
-    },
-  },
-];
 
 interface ApplicationItem {
   id: string;
@@ -90,7 +30,7 @@ interface ApplicationItem {
 
 export const CampaignsManager: React.FC = () => {
   const { user, token, updateUser } = useAuth();
-  const [campaigns, setCampaigns] = useState<Campaign[]>(INITIAL_DEMO_CAMPAIGNS);
+  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -111,33 +51,7 @@ export const CampaignsManager: React.FC = () => {
   const [aiBriefBanner, setAiBriefBanner] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Mock applicants list for interactive review
-  const [applicants, setApplicants] = useState<ApplicationItem[]>([
-    {
-      id: 'app_demo_1',
-      creatorId: 'cp_demo_1',
-      creator: {
-        handle: 'alexrivera_tech',
-        categories: ['Technology', 'Hardware'],
-        user: { name: 'Alex Rivera' },
-      },
-      pitch: 'I have 250K+ subscribers in the mechanical keyboard & developer desk setup niche. Can deliver 4K dedicated unboxing & sound test within 5 days.',
-      proposedRate: 55,
-      status: 'PENDING',
-    },
-    {
-      id: 'app_demo_2',
-      creatorId: 'cp_demo_2',
-      creator: {
-        handle: 'sarah_codes',
-        categories: ['Software', 'Productivity'],
-        user: { name: 'Sarah Chen' },
-      },
-      pitch: 'Would love to integrate this into my upcoming "Ultimate 2026 Developer Desk Setup" video.',
-      proposedRate: 50,
-      status: 'PENDING',
-    },
-  ]);
+  const [applicants, setApplicants] = useState<ApplicationItem[]>([]);
 
   useEffect(() => {
     async function loadCampaigns() {
@@ -146,7 +60,7 @@ export const CampaignsManager: React.FC = () => {
         const res = await apiRequest<{ campaigns: Campaign[] }>('/campaigns/brand', {
           headers: { Authorization: `Bearer ${token}` },
         });
-        if (res.success && res.data?.campaigns && res.data.campaigns.length > 0) {
+        if (res.success && res.data?.campaigns) {
           setCampaigns(res.data.campaigns);
         }
 
@@ -157,7 +71,7 @@ export const CampaignsManager: React.FC = () => {
           setProducts(prodRes.data.products);
         }
       } catch {
-        // Keep demo items
+        setCampaigns([]);
       }
     }
     loadCampaigns();
@@ -321,8 +235,20 @@ export const CampaignsManager: React.FC = () => {
         </button>
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-        {campaigns.map((camp) => (
+      {campaigns.length === 0 ? (
+        <div className="card text-center" style={{ padding: '3.5rem 2rem' }}>
+          <Target size={40} color="var(--text-muted)" style={{ margin: '0 auto 1rem' }} />
+          <h3>No Performance Campaigns Yet</h3>
+          <p style={{ maxWidth: '440px', margin: '0.5rem auto 1.5rem', color: 'var(--text-muted)' }}>
+            Launch a verified YouTube CPM campaign. Escrow credit rewards for creators based on certified incremental views.
+          </p>
+          <button onClick={() => setIsCreateModalOpen(true)} className="btn btn-primary" style={{ margin: '0 auto' }}>
+            <Plus size={16} /> Create First Campaign
+          </button>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          {campaigns.map((camp) => (
           <div key={camp.id} className="card">
             <div className="flex items-center justify-between" style={{ flexWrap: 'wrap', gap: '1rem', marginBottom: '1rem' }}>
               <div>
@@ -380,6 +306,7 @@ export const CampaignsManager: React.FC = () => {
           </div>
         ))}
       </div>
+      )}
 
       {/* Create Campaign Modal */}
       {isCreateModalOpen && (

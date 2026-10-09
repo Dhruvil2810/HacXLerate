@@ -13,6 +13,9 @@ export const addPortfolioItemSchema = z.object({
 export const searchCreatorsSchema = z.object({
   query: z.string().optional(),
   category: z.string().optional(),
+  skill: z.string().optional(),
+  tool: z.string().optional(),
+  contentType: z.string().optional(),
   location: z.string().optional(),
   isVerified: z.enum(['true', 'false']).optional(),
   page: z.coerce.number().min(1).default(1),

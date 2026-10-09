@@ -4,38 +4,9 @@ import { apiRequest } from '../services/api';
 import { Product } from '../types/marketplace';
 import { Plus, Package, Globe, Tag, Trash2, X, Sparkles } from 'lucide-react';
 
-const INITIAL_DEMO_PRODUCTS: Product[] = [
-  {
-    id: 'prod_demo_1',
-    brandId: 'bp_demo_1',
-    name: 'Nexus Pro Mechanical Keyboard',
-    description: 'Hot-swappable custom gasket-mounted mechanical keyboard with wireless Bluetooth 5.2 and OLED interactive screen.',
-    category: 'Hardware & Peripherals',
-    websiteUrl: 'https://nexustechlabs.io/keyboard',
-    usp: 'Ultra-low 1ms latency wireless switchable PCB',
-    features: ['Gasket mount', 'Hot-swappable switches', 'OLED display', 'CNC Aluminum'],
-    targetAudience: 'Software developers, mechanical keyboard enthusiasts, productivity creators',
-    createdAt: new Date().toISOString(),
-    _count: { campaigns: 2 },
-  },
-  {
-    id: 'prod_demo_2',
-    brandId: 'bp_demo_1',
-    name: 'AirGlide Wireless Productivity Mouse',
-    description: 'Ergonomic 58g ultra-lightweight wireless mouse engineered for precision design work and extended coding sessions.',
-    category: 'Hardware & Peripherals',
-    websiteUrl: 'https://nexustechlabs.io/mouse',
-    usp: '58g ultra-lightweight with 120-hour battery life',
-    features: ['PAW3395 Sensor', 'Optical switches', '120h battery', 'Custom software'],
-    targetAudience: 'Designers, developers, and esports creators',
-    createdAt: new Date().toISOString(),
-    _count: { campaigns: 1 },
-  },
-];
-
 export const ProductsManager: React.FC = () => {
   const { user, token, updateUser } = useAuth();
-  const [products, setProducts] = useState<Product[]>(INITIAL_DEMO_PRODUCTS);
+  const [products, setProducts] = useState<Product[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [name, setName] = useState('');
   const [category, setCategory] = useState('Hardware & Peripherals');
@@ -54,11 +25,11 @@ export const ProductsManager: React.FC = () => {
         const res = await apiRequest<{ products: Product[] }>('/products', {
           headers: { Authorization: `Bearer ${token}` },
         });
-        if (res.success && res.data?.products && res.data.products.length > 0) {
+        if (res.success && res.data?.products) {
           setProducts(res.data.products);
         }
       } catch {
-        // Fallback to demo items
+        setProducts([]);
       }
     }
     loadProducts();
@@ -190,8 +161,20 @@ export const ProductsManager: React.FC = () => {
         </button>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
-        {products.map((product) => (
+      {products.length === 0 ? (
+        <div className="card text-center" style={{ padding: '3.5rem 2rem' }}>
+          <Package size={40} color="var(--text-muted)" style={{ margin: '0 auto 1rem' }} />
+          <h3>No Products Added Yet</h3>
+          <p style={{ maxWidth: '440px', margin: '0.5rem auto 1.5rem', color: 'var(--text-muted)' }}>
+            Add your brand's physical or digital products. OpenRouter AI will extract unique selling points and target audience hooks for your creator briefs.
+          </p>
+          <button onClick={() => setIsModalOpen(true)} className="btn btn-primary" style={{ margin: '0 auto' }}>
+            <Plus size={16} /> Add First Product
+          </button>
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 gap-4">
+          {products.map((product) => (
           <div key={product.id} className="card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
             <div>
               <div className="flex items-center justify-between" style={{ marginBottom: '0.75rem' }}>
@@ -252,6 +235,7 @@ export const ProductsManager: React.FC = () => {
           </div>
         ))}
       </div>
+      )}
 
       {/* Add Product Modal */}
       {isModalOpen && (

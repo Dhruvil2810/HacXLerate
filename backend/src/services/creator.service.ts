@@ -10,11 +10,25 @@ export async function searchCreators(filters: SearchCreatorsInput) {
       { handle: { contains: filters.query, mode: 'insensitive' } },
       { bio: { contains: filters.query, mode: 'insensitive' } },
       { user: { name: { contains: filters.query, mode: 'insensitive' } } },
+      { skills: { has: filters.query } },
+      { tools: { has: filters.query } },
     ];
   }
 
-  if (filters.category) {
+  if (filters.category && filters.category !== 'All') {
     where.categories = { has: filters.category };
+  }
+
+  if (filters.skill && filters.skill !== 'All') {
+    where.skills = { has: filters.skill };
+  }
+
+  if (filters.tool && filters.tool !== 'All') {
+    where.tools = { has: filters.tool };
+  }
+
+  if (filters.contentType && filters.contentType !== 'All') {
+    where.contentTypes = { has: filters.contentType };
   }
 
   if (filters.location) {

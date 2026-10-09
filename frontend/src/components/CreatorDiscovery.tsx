@@ -1,427 +1,520 @@
-import React, { useState } from 'react';
-import { CreatorCard } from '../types/marketplace';
+import React, { useState, useEffect } from 'react';
+import { useAuth } from '../context/AuthContext';
+import { apiRequest } from '../services/api';
 import { 
   Search, 
   CheckCircle2, 
   Send, 
   X, 
-  MapPin, 
-  Tag,
-  Sparkles
+  Wrench, 
+  Film, 
+  ExternalLink,
+  RotateCcw,
+  Youtube,
+  AlertCircle
 } from 'lucide-react';
 
-const DEMO_CREATORS: (CreatorCard & { aiMatch?: { score: number; explanation: string; consistency: number } })[] = [
-  {
-    id: 'cp_demo_1',
-    userId: 'usr_demo_1',
-    handle: 'alexrivera_tech',
-    bio: 'In-depth mechanical keyboard reviews, desk setups, and developer workstation benchmarks. 250K+ subscribers.',
-    location: 'San Francisco, CA',
-    categories: ['Technology', 'Hardware', 'Productivity'],
-    skills: ['4K Video Production', 'Sound Test', 'Shorts'],
-    isVerified: true,
-    user: {
-      name: 'Alex Rivera',
-      avatarUrl: null,
-    },
-    aiMatch: {
-      score: 94.2,
-      consistency: 91,
-      explanation: 'Exceptional audience fit with 250K+ tech and keyboard enthusiasts; historical video consistency shows predictable view delivery.',
-    },
-    socialAccounts: [
-      {
-        platform: 'YOUTUBE',
-        accountName: 'Alex Rivera Tech',
-        verificationStatus: 'VERIFIED',
-        youtubeChannel: {
-          subscriberCount: 265000,
-          totalViews: 14200000,
-          videoCount: 142,
-        },
-      },
-    ],
-    portfolioItems: [
-      {
-        id: 'port_1',
-        title: 'Custom Gasket Mount Keyboard Showcase',
-        mediaUrl: 'https://youtube.com/watch?v=demo1',
-        category: 'Hardware',
-      },
-    ],
-  },
-  {
-    id: 'cp_demo_2',
-    userId: 'usr_demo_2',
-    handle: 'sarah_codes',
-    bio: 'Software engineer sharing productivity workflows, SaaS reviews, and coding tutorials.',
-    location: 'Seattle, WA',
-    categories: ['Software', 'Education', 'Technology'],
-    skills: ['SaaS Reviews', 'Screen Recordings', 'Tutorials'],
-    isVerified: true,
-    user: {
-      name: 'Sarah Chen',
-      avatarUrl: null,
-    },
-    aiMatch: {
-      score: 88.6,
-      consistency: 85,
-      explanation: 'High engagement among developer audiences; strong alignment for productivity tooling and workflow integrations.',
-    },
-    socialAccounts: [
-      {
-        platform: 'YOUTUBE',
-        accountName: 'Sarah Codes',
-        verificationStatus: 'VERIFIED',
-        youtubeChannel: {
-          subscriberCount: 185000,
-          totalViews: 8900000,
-          videoCount: 98,
-        },
-      },
-    ],
-  },
-  {
-    id: 'cp_demo_3',
-    userId: 'usr_demo_3',
-    handle: 'marcus_gaming',
-    bio: 'Competitive gamer testing low-latency peripherals, gaming mice, and audio equipment.',
-    location: 'Austin, TX',
-    categories: ['Gaming', 'Hardware'],
-    skills: ['Gameplay Integration', 'Unboxing', 'Shorts'],
-    isVerified: false,
-    user: {
-      name: 'Marcus Vance',
-      avatarUrl: null,
-    },
-    aiMatch: {
-      score: 81.4,
-      consistency: 78,
-      explanation: 'Solid gaming peripherals overlap with strong short-form unboxing metrics.',
-    },
-    socialAccounts: [
-      {
-        platform: 'YOUTUBE',
-        accountName: 'Marcus Gaming Lab',
-        verificationStatus: 'SELF_REPORTED',
-        youtubeChannel: {
-          subscriberCount: 94000,
-          totalViews: 4200000,
-          videoCount: 75,
-        },
-      },
-    ],
-  },
-];
+interface CreatorItem {
+  id: string;
+  userId: string;
+  handle: string;
+  bio?: string;
+  location?: string;
+  categories: string[];
+  skills: string[];
+  tools: string[];
+  contentTypes: string[];
+  isVerified: boolean;
+  user: {
+    name: string;
+    avatarUrl?: string | null;
+  };
+  portfolioItems?: {
+    id: string;
+    title: string;
+    mediaUrl: string;
+    thumbnailUrl?: string;
+    category?: string;
+    toolsUsed?: string[];
+  }[];
+  socialAccounts?: {
+    platform: string;
+    accountName: string;
+    verificationStatus: string;
+    youtubeChannel?: {
+      subscriberCount: number | string;
+      totalViews: number | string;
+      videoCount: number;
+    } | null;
+  }[];
+  aiMatch?: {
+    score: number;
+    explanation: string;
+    consistency: number;
+  };
+}
 
-const CATEGORIES = ['All', 'Technology', 'Hardware', 'Software', 'Gaming', 'Productivity'];
+const CATEGORIES = ['All', 'Technology', 'AI Film & Animation', 'Product Design', 'Gaming', 'Fashion & Editorial', 'Productivity'];
+const AI_TOOLS_FILTER = ['All', 'Midjourney', 'Runway', 'Sora', 'Kling', 'ComfyUI', 'Flux', 'ElevenLabs', 'Pika'];
 
 export const CreatorDiscovery: React.FC = () => {
-  const [creators] = useState(DEMO_CREATORS);
+  const { token } = useAuth();
+  const [creators, setCreators] = useState<CreatorItem[]>([]);
+  const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
-  const [selectedCreator, setSelectedCreator] = useState<typeof DEMO_CREATORS[0] | null>(null);
+  const [selectedTool, setSelectedTool] = useState('All');
+  const [selectedVerified, setSelectedVerified] = useState<string>('All');
+  
+  // Invite modal state
+  const [selectedCreator, setSelectedCreator] = useState<CreatorItem | null>(null);
   const [inviteMessage, setInviteMessage] = useState('');
-  const [invitedSuccess, setInvitedSuccess] = useState(false);
+  const [sendingInvite, setSendingInvite] = useState(false);
+  const [inviteSuccess, setInviteSuccess] = useState(false);
+  const [inviteError, setInviteError] = useState<string | null>(null);
 
-  const filteredCreators = creators.filter((c) => {
-    const matchesCategory =
-      selectedCategory === 'All' || c.categories.includes(selectedCategory);
-    const matchesSearch =
-      c.handle.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      c.user.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (c.bio && c.bio.toLowerCase().includes(searchQuery.toLowerCase()));
-    return matchesCategory && matchesSearch;
-  });
+  const fetchCreators = async () => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (searchQuery.trim()) params.set('query', searchQuery.trim());
+      if (selectedCategory !== 'All') params.set('category', selectedCategory);
+      if (selectedTool !== 'All') params.set('tool', selectedTool);
+      if (selectedVerified === 'true') params.set('isVerified', 'true');
 
-  const handleSendInvite = (e: React.FormEvent) => {
+      const url = `/creators${params.toString() ? `?${params.toString()}` : ''}`;
+      const res = await apiRequest<{ creators: CreatorItem[] }>(url, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+
+      if (res.data?.creators) {
+        setCreators(res.data.creators);
+      } else {
+        setCreators([]);
+      }
+    } catch {
+      setCreators([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      fetchCreators();
+    }, 250);
+    return () => clearTimeout(timeout);
+  }, [searchQuery, selectedCategory, selectedTool, selectedVerified]);
+
+  const handleResetFilters = () => {
+    setSearchQuery('');
+    setSelectedCategory('All');
+    setSelectedTool('All');
+    setSelectedVerified('All');
+  };
+
+  const handleSendInvite = async (e: React.FormEvent) => {
     e.preventDefault();
-    setInvitedSuccess(true);
-    setTimeout(() => {
-      setInvitedSuccess(false);
-      setSelectedCreator(null);
-      setInviteMessage('');
-    }, 1500);
+    if (!selectedCreator || !token) return;
+
+    setSendingInvite(true);
+    setInviteError(null);
+
+    try {
+      // Send direct invitation message
+      await apiRequest('/messages', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          recipientId: selectedCreator.userId,
+          content: inviteMessage || `Hi @${selectedCreator.handle}, we would love to invite you to collaborate on our upcoming AI creative brief!`,
+        }),
+      });
+
+      setInviteSuccess(true);
+      setTimeout(() => {
+        setInviteSuccess(false);
+        setSelectedCreator(null);
+        setInviteMessage('');
+      }, 2000);
+    } catch (err: any) {
+      setInviteError(err.message || 'Failed to send invitation');
+    } finally {
+      setSendingInvite(false);
+    }
   };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+      {/* Header */}
       <div>
-        <h3>Creator Intelligence & AI Match Reasoning</h3>
+        <h3>Creator Intelligence & AI Workflow Discovery</h3>
         <p style={{ fontSize: '0.875rem' }}>
-          Deterministic multi-factor creator scores powered by OpenRouter AI semantic fit reasoning.
+          Discover verified AI filmmakers, 3D animators, and generative artists filtered by tools, workflows, and authentic channel metrics.
         </p>
       </div>
 
-      {/* Search & Category Filter Header */}
-      <div className="flex items-center justify-between" style={{ flexWrap: 'wrap', gap: '1rem' }}>
-        <div style={{ position: 'relative', width: '320px' }}>
-          <Search size={16} color="var(--text-muted)" style={{ position: 'absolute', left: '12px', top: '12px' }} />
-          <input
-            type="text"
-            placeholder="Search by name, handle, or skills..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            style={{
-              width: '100%',
-              padding: '0.6rem 0.75rem 0.6rem 2.25rem',
-              border: '1px solid var(--border-default)',
-              borderRadius: 'var(--radius-md)',
-              fontSize: '0.875rem',
-            }}
-          />
-        </div>
-
-        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-          {CATEGORIES.map((cat) => (
-            <button
-              key={cat}
-              onClick={() => setSelectedCategory(cat)}
+      {/* Filter Toolbar */}
+      <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '1rem', padding: '1.25rem' }}>
+        <div className="flex items-center justify-between" style={{ flexWrap: 'wrap', gap: '1rem' }}>
+          {/* Search Input */}
+          <div style={{ position: 'relative', flex: '1 1 280px' }}>
+            <Search size={16} color="var(--text-muted)" style={{ position: 'absolute', left: '12px', top: '12px' }} />
+            <input
+              type="text"
+              placeholder="Search by creator name, @handle, skills, or tools..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
               style={{
-                padding: '0.35rem 0.75rem',
-                borderRadius: 'var(--radius-full)',
-                fontSize: '0.8rem',
-                border: selectedCategory === cat ? '1px solid var(--color-brand)' : '1px solid var(--border-default)',
-                backgroundColor: selectedCategory === cat ? 'var(--color-brand-light)' : 'var(--bg-surface)',
-                color: selectedCategory === cat ? 'var(--color-brand)' : 'var(--text-secondary)',
-                fontWeight: 600,
-                cursor: 'pointer',
+                width: '100%',
+                padding: '0.6rem 0.75rem 0.6rem 2.25rem',
+                border: '1px solid var(--border-default)',
+                borderRadius: 'var(--radius-md)',
+                fontSize: '0.875rem',
+              }}
+            />
+          </div>
+
+          {/* Verification Dropdown */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
+              Verification:
+            </label>
+            <select
+              value={selectedVerified}
+              onChange={(e) => setSelectedVerified(e.target.value)}
+              style={{
+                padding: '0.55rem 0.75rem',
+                border: '1px solid var(--border-default)',
+                borderRadius: 'var(--radius-md)',
+                fontSize: '0.825rem',
+                backgroundColor: 'var(--bg-surface)',
               }}
             >
-              {cat}
-            </button>
-          ))}
+              <option value="All">All Tiers</option>
+              <option value="true">Verified Channels Only</option>
+            </select>
+
+            {(searchQuery || selectedCategory !== 'All' || selectedTool !== 'All' || selectedVerified !== 'All') && (
+              <button
+                onClick={handleResetFilters}
+                className="btn btn-secondary"
+                style={{ fontSize: '0.8rem', padding: '0.5rem 0.75rem' }}
+                title="Reset all filters"
+              >
+                <RotateCcw size={12} /> Reset
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Category Pills */}
+        <div>
+          <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.35rem', textTransform: 'uppercase' }}>
+            Niche & Content Categories:
+          </div>
+          <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+            {CATEGORIES.map((cat) => (
+              <button
+                key={cat}
+                onClick={() => setSelectedCategory(cat)}
+                className={`btn ${selectedCategory === cat ? 'btn-primary' : 'btn-secondary'}`}
+                style={{ fontSize: '0.75rem', padding: '0.3rem 0.65rem' }}
+              >
+                {cat}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* AI Tools Pills */}
+        <div>
+          <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.35rem', textTransform: 'uppercase' }}>
+            Generative AI Tools & Models:
+          </div>
+          <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+            {AI_TOOLS_FILTER.map((tool) => (
+              <button
+                key={tool}
+                onClick={() => setSelectedTool(tool)}
+                className={`btn ${selectedTool === tool ? 'btn-primary' : 'btn-secondary'}`}
+                style={{ fontSize: '0.75rem', padding: '0.25rem 0.6rem' }}
+              >
+                <Wrench size={10} /> {tool}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
-      {/* Creator Grid */}
-      <div className="grid grid-cols-3 gap-4">
-        {filteredCreators.map((creator) => {
-          const yt = creator.socialAccounts?.[0]?.youtubeChannel;
-          const isVerified = creator.socialAccounts?.[0]?.verificationStatus === 'VERIFIED';
+      {/* Loading State */}
+      {loading && (
+        <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+          <div className="skeleton" style={{ height: '220px', borderRadius: 'var(--radius-lg)' }}></div>
+        </div>
+      )}
 
-          return (
-            <div key={creator.id} className="card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-              <div>
-                <div className="flex items-center justify-between" style={{ marginBottom: '0.75rem' }}>
-                  <div className="flex items-center gap-2">
+      {/* Empty State */}
+      {!loading && creators.length === 0 && (
+        <div className="card" style={{
+          textAlign: 'center',
+          padding: '3.5rem 1.5rem',
+          border: '2px dashed var(--border-default)',
+          backgroundColor: 'var(--bg-subtle)'
+        }}>
+          <Film size={40} color="var(--color-brand)" style={{ margin: '0 auto 12px' }} />
+          <h3>No Creators Found</h3>
+          <p style={{ maxWidth: '450px', margin: '0.5rem auto 1.5rem', fontSize: '0.875rem' }}>
+            No creator profiles match your active filters. Try clearing your search filters or invite creators to join your campaign.
+          </p>
+          <button onClick={handleResetFilters} className="btn btn-secondary">
+            <RotateCcw size={14} /> Clear All Filters
+          </button>
+        </div>
+      )}
+
+      {/* Creator Grid */}
+      {!loading && creators.length > 0 && (
+        <div className="grid grid-cols-2 gap-6">
+          {creators.map((creator) => {
+            const yt = creator.socialAccounts?.find((s) => s.platform === 'YOUTUBE')?.youtubeChannel;
+            const subs = yt ? Number(yt.subscriberCount).toLocaleString() : null;
+            const totalViews = yt ? Number(yt.totalViews).toLocaleString() : null;
+
+            return (
+              <div key={creator.id} className="card" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                {/* Header Profile Info */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
                     <div style={{
-                      width: '40px',
-                      height: '40px',
+                      width: '46px',
+                      height: '46px',
                       borderRadius: '50%',
                       backgroundColor: 'var(--color-brand-light)',
+                      color: 'var(--color-brand)',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      color: 'var(--color-brand)',
                       fontWeight: 700,
+                      fontSize: '1.1rem',
                     }}>
-                      {creator.user.name[0]}
+                      {creator.user.name ? creator.user.name.charAt(0).toUpperCase() : 'C'}
                     </div>
                     <div>
-                      <div style={{ fontWeight: 700, fontSize: '0.95rem' }}>{creator.user.name}</div>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>@{creator.handle}</div>
+                      <div className="flex items-center gap-2">
+                        <h4 style={{ fontSize: '1.05rem' }}>{creator.user.name}</h4>
+                        {creator.isVerified && (
+                          <span className="badge badge-verified" style={{ fontSize: '0.7rem' }}>
+                            <CheckCircle2 size={11} /> Verified
+                          </span>
+                        )}
+                      </div>
+                      <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                        @{creator.handle} {creator.location && `• ${creator.location}`}
+                      </div>
                     </div>
                   </div>
 
-                  <span className={`badge ${isVerified ? 'badge-verified' : 'badge-selfreported'}`}>
-                    {isVerified ? (
-                      <>
-                        <CheckCircle2 size={12} /> Verified
-                      </>
-                    ) : (
-                      '⚠ Self Reported'
-                    )}
-                  </span>
+                  <button
+                    onClick={() => setSelectedCreator(creator)}
+                    className="btn btn-primary"
+                    style={{ fontSize: '0.8rem', padding: '0.4rem 0.8rem' }}
+                  >
+                    <Send size={13} /> Invite
+                  </button>
                 </div>
 
-                {/* AI Match Score Badge & Explanation */}
-                {creator.aiMatch && (
-                  <div style={{
-                    padding: '0.65rem 0.85rem',
-                    backgroundColor: 'var(--color-brand-light)',
-                    borderRadius: 'var(--radius-md)',
-                    marginBottom: '1rem',
-                    border: '1px solid var(--color-info-border)',
-                  }}>
-                    <div className="flex items-center justify-between" style={{ marginBottom: '0.25rem' }}>
-                      <span style={{ fontWeight: 700, fontSize: '0.85rem', color: 'var(--color-brand)', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                        <Sparkles size={13} /> {creator.aiMatch.score}% Deterministic Match
-                      </span>
-                      <span style={{ fontSize: '0.725rem', color: 'var(--color-success)', fontWeight: 600 }}>
-                        {creator.aiMatch.consistency}% Consistency
-                      </span>
-                    </div>
-                    <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', lineHeight: '1.35', margin: 0 }}>
-                      {creator.aiMatch.explanation}
-                    </p>
-                  </div>
+                {/* Bio */}
+                {creator.bio && (
+                  <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: 1.45 }}>
+                    {creator.bio}
+                  </p>
                 )}
 
-                <p style={{ fontSize: '0.825rem', color: 'var(--text-secondary)', lineHeight: '1.4', marginBottom: '1rem' }}>
-                  {creator.bio}
-                </p>
-
-                {creator.location && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>
-                    <MapPin size={12} /> {creator.location}
-                  </div>
-                )}
-
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginBottom: '1rem' }}>
-                  {creator.categories.map((cat) => (
-                    <span key={cat} className="badge badge-neutral" style={{ fontSize: '0.7rem' }}>
-                      <Tag size={10} /> {cat}
+                {/* AI Tools & Skills Badges */}
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
+                  {creator.tools && creator.tools.map((tool) => (
+                    <span
+                      key={tool}
+                      style={{
+                        fontSize: '0.7rem',
+                        fontWeight: 600,
+                        backgroundColor: 'var(--bg-subtle)',
+                        color: 'var(--color-brand)',
+                        border: '1px solid var(--border-subtle)',
+                        padding: '0.15rem 0.45rem',
+                        borderRadius: 'var(--radius-sm)',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '0.25rem',
+                      }}
+                    >
+                      <Wrench size={10} /> {tool}
+                    </span>
+                  ))}
+                  {creator.categories && creator.categories.map((cat) => (
+                    <span
+                      key={cat}
+                      className="badge badge-neutral"
+                      style={{ fontSize: '0.7rem' }}
+                    >
+                      {cat}
                     </span>
                   ))}
                 </div>
 
+                {/* Verified YouTube Channel Stats if available */}
                 {yt && (
-                  <div className="grid grid-cols-2 gap-2" style={{ padding: '0.5rem', backgroundColor: 'var(--bg-subtle)', borderRadius: 'var(--radius-sm)', marginBottom: '1rem' }}>
-                    <div>
-                      <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Subscribers</div>
-                      <div style={{ fontWeight: 700, fontSize: '0.85rem' }}>
-                        {Number(yt.subscriberCount).toLocaleString()}
-                      </div>
+                  <div style={{
+                    padding: '0.65rem 0.85rem',
+                    backgroundColor: 'var(--bg-subtle)',
+                    borderRadius: 'var(--radius-md)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    fontSize: '0.8rem',
+                  }}>
+                    <div className="flex items-center gap-1.5" style={{ color: '#dc2626', fontWeight: 600 }}>
+                      <Youtube size={15} /> YouTube Metrics
                     </div>
-                    <div>
-                      <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Channel Views</div>
-                      <div style={{ fontWeight: 700, fontSize: '0.85rem' }}>
-                        {(Number(yt.totalViews) / 1000000).toFixed(1)}M
-                      </div>
+                    <div style={{ color: 'var(--text-secondary)' }}>
+                      <strong>{subs}</strong> Subscribers • <strong>{totalViews}</strong> Channel Views
+                    </div>
+                  </div>
+                )}
+
+                {/* Portfolio Showcase Snippet */}
+                {creator.portfolioItems && creator.portfolioItems.length > 0 && (
+                  <div style={{ marginTop: 'auto', paddingTop: '0.75rem', borderTop: '1px solid var(--border-subtle)' }}>
+                    <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.4rem' }}>
+                      Recent AI Portfolio Projects:
+                    </div>
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      {creator.portfolioItems.map((p) => (
+                        <a
+                          key={p.id}
+                          href={p.mediaUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          style={{
+                            fontSize: '0.75rem',
+                            color: 'var(--color-brand)',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '0.2rem',
+                            backgroundColor: 'var(--bg-subtle)',
+                            padding: '0.25rem 0.5rem',
+                            borderRadius: 'var(--radius-sm)',
+                          }}
+                        >
+                          <Film size={11} /> {p.title}
+                          <ExternalLink size={10} />
+                        </a>
+                      ))}
                     </div>
                   </div>
                 )}
               </div>
-
-              <div style={{ paddingTop: '0.75rem', borderTop: '1px solid var(--border-subtle)' }}>
-                <button
-                  onClick={() => setSelectedCreator(creator)}
-                  className="btn btn-primary"
-                  style={{ width: '100%', fontSize: '0.8rem', padding: '0.45rem' }}
-                >
-                  <Send size={14} /> Invite to Campaign
-                </button>
-              </div>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* Invite Modal */}
       {selectedCreator && (
-        <div style={{
-          position: 'fixed',
-          inset: 0,
-          backgroundColor: 'rgba(15, 23, 42, 0.6)',
-          backdropFilter: 'blur(4px)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 100,
-          padding: '1rem',
-        }}>
-          <div style={{
-            backgroundColor: 'var(--bg-surface)',
-            borderRadius: 'var(--radius-xl)',
-            width: '100%',
-            maxWidth: '500px',
-            padding: '2rem',
-            position: 'relative',
-          }}>
-            <button
-              onClick={() => setSelectedCreator(null)}
-              style={{
-                position: 'absolute',
-                top: '1.25rem',
-                right: '1.25rem',
-                background: 'none',
-                border: 'none',
-                color: 'var(--text-muted)',
-                cursor: 'pointer',
-              }}
-            >
-              <X size={20} />
-            </button>
-
-            <div style={{ marginBottom: '1.5rem' }}>
-              <div className="badge badge-verified" style={{ marginBottom: '0.5rem' }}>
-                <Send size={12} /> Direct Invitation
+        <div className="modal-overlay">
+          <div className="modal-content" style={{ maxWidth: '520px' }}>
+            <div className="flex items-center justify-between" style={{ marginBottom: '1.25rem' }}>
+              <div className="flex items-center gap-2">
+                <div style={{
+                  padding: '0.4rem',
+                  backgroundColor: 'var(--color-brand-light)',
+                  color: 'var(--color-brand)',
+                  borderRadius: 'var(--radius-md)',
+                }}>
+                  <Send size={18} />
+                </div>
+                <div>
+                  <h3>Invite @{selectedCreator.handle}</h3>
+                  <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                    Send a direct project collaboration invitation.
+                  </p>
+                </div>
               </div>
-              <h3>Invite @{selectedCreator.handle}</h3>
-              <p style={{ fontSize: '0.875rem' }}>
-                Send a personalized campaign invitation to {selectedCreator.user.name}.
-              </p>
+              <button onClick={() => setSelectedCreator(null)} className="btn btn-secondary" style={{ padding: '0.3rem' }}>
+                <X size={16} />
+              </button>
             </div>
 
-            {invitedSuccess ? (
+            {inviteSuccess && (
               <div style={{
-                padding: '1.5rem',
-                textAlign: 'center',
+                padding: '0.75rem',
                 backgroundColor: 'var(--color-success-light)',
-                borderRadius: 'var(--radius-md)',
                 color: 'var(--color-success)',
-                fontWeight: 600,
+                borderRadius: 'var(--radius-md)',
+                marginBottom: '1rem',
+                fontSize: '0.85rem',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem',
               }}>
-                <CheckCircle2 size={32} style={{ margin: '0 auto 8px' }} />
-                Invitation sent successfully!
+                <CheckCircle2 size={16} />
+                Invitation message delivered to creator!
               </div>
-            ) : (
-              <form onSubmit={handleSendInvite} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.825rem', fontWeight: 600, marginBottom: '0.35rem' }}>
-                    Select Campaign
-                  </label>
-                  <select
-                    required
-                    style={{
-                      width: '100%',
-                      padding: '0.6rem 0.75rem',
-                      border: '1px solid var(--border-default)',
-                      borderRadius: 'var(--radius-md)',
-                      fontSize: '0.875rem',
-                    }}
-                  >
-                    <option value="camp_1">Creator Studio Mechanical Keyboard Q4 (CPM ₹55)</option>
-                    <option value="camp_2">AirGlide Wireless Mouse Launch (CPM ₹50)</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.825rem', fontWeight: 600, marginBottom: '0.35rem' }}>
-                    Personal Note / Pitch
-                  </label>
-                  <textarea
-                    rows={3}
-                    required
-                    placeholder="We love your recent desk setup videos and would love to partner with you for our upcoming product launch..."
-                    value={inviteMessage}
-                    onChange={(e) => setInviteMessage(e.target.value)}
-                    style={{
-                      width: '100%',
-                      padding: '0.6rem 0.75rem',
-                      border: '1px solid var(--border-default)',
-                      borderRadius: 'var(--radius-md)',
-                      fontSize: '0.875rem',
-                      fontFamily: 'inherit',
-                    }}
-                  />
-                </div>
-
-                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '1rem' }}>
-                  <button
-                    type="button"
-                    onClick={() => setSelectedCreator(null)}
-                    className="btn btn-secondary"
-                  >
-                    Cancel
-                  </button>
-                  <button type="submit" className="btn btn-primary">
-                    Send Invitation
-                  </button>
-                </div>
-              </form>
             )}
+
+            {inviteError && (
+              <div style={{
+                padding: '0.75rem',
+                backgroundColor: '#fee2e2',
+                color: '#dc2626',
+                borderRadius: 'var(--radius-md)',
+                marginBottom: '1rem',
+                fontSize: '0.85rem',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+              }}>
+                <AlertCircle size={16} />
+                {inviteError}
+              </div>
+            )}
+
+            <form onSubmit={handleSendInvite} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.825rem', fontWeight: 600, marginBottom: '0.35rem' }}>
+                  Project Invitation Message
+                </label>
+                <textarea
+                  rows={4}
+                  required
+                  placeholder={`Hi @${selectedCreator.handle}, we loved your AI portfolio and would like to invite you to our latest creative brief...`}
+                  value={inviteMessage}
+                  onChange={(e) => setInviteMessage(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '0.6rem 0.75rem',
+                    border: '1px solid var(--border-default)',
+                    borderRadius: 'var(--radius-md)',
+                    fontSize: '0.875rem',
+                  }}
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2">
+                <button type="button" onClick={() => setSelectedCreator(null)} className="btn btn-secondary">
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={sendingInvite}
+                  className="btn btn-primary"
+                  id="btn-confirm-send-invite"
+                >
+                  {sendingInvite ? 'Sending...' : 'Send Invitation'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

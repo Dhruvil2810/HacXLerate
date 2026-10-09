@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { apiRequest } from '../services/api';
 import { 
   ShieldCheck, 
   Users, 
@@ -10,7 +11,8 @@ import {
   X, 
   CheckCircle2, 
   UserCheck,
-  UserX
+  UserX,
+  FileText
 } from 'lucide-react';
 
 interface ManagedUser {
@@ -22,53 +24,128 @@ interface ManagedUser {
   creditBalance: number;
 }
 
-const DEMO_USERS: ManagedUser[] = [
-  { id: 'usr_1', name: 'Nexus Tech Labs', email: 'brand@nexus.com', role: 'BRAND', status: 'ACTIVE', creditBalance: 12500 },
-  { id: 'usr_2', name: 'Alex Rivera', email: 'alex@techreview.io', role: 'CREATOR', status: 'ACTIVE', creditBalance: 2850 },
-  { id: 'usr_3', name: 'Sarah Chen', email: 'sarah@codes.io', role: 'CREATOR', status: 'ACTIVE', creditBalance: 1950 },
-  { id: 'usr_4', name: 'Zenith Workspace', email: 'contact@zenith.com', role: 'BRAND', status: 'ACTIVE', creditBalance: 8200 },
-];
+interface AuditLogItem {
+  id: string;
+  action: string;
+  actorId?: string;
+  entityType: string;
+  entityId?: string;
+  details?: any;
+  createdAt: string;
+}
 
 export const AdminDashboard: React.FC = () => {
-  const { user } = useAuth();
-  const [users, setUsers] = useState<ManagedUser[]>(DEMO_USERS);
+  const { user, token } = useAuth();
+  const [users, setUsers] = useState<ManagedUser[]>([]);
+  const [auditLogs, setAuditLogs] = useState<AuditLogItem[]>([]);
+  const [overview, setOverview] = useState({
+    totalUsers: 0,
+    creatorsCount: 0,
+    brandsCount: 0,
+    circulatingCredits: 0,
+    aiQueriesCount: 0,
+  });
   const [isAdjustModalOpen, setIsAdjustModalOpen] = useState(false);
   
   // Adjustment modal states
-  const [selectedUserId, setSelectedUserId] = useState(DEMO_USERS[0].id);
+  const [selectedUserId, setSelectedUserId] = useState('');
   const [adjustAmount, setAdjustAmount] = useState<number>(500);
   const [adjustType, setAdjustType] = useState<'CREDIT_GRANT' | 'ADMIN_ADJUSTMENT' | 'REVERSAL'>('ADMIN_ADJUSTMENT');
   const [adjustReason, setAdjustReason] = useState('');
   const [adjustSuccess, setAdjustSuccess] = useState(false);
+  const [loading, setLoading] = useState(false);
 
-  const handleStatusToggle = (userId: string) => {
-    setUsers((prev) =>
-      prev.map((u) => {
-        if (u.id === userId) {
-          const nextStatus = u.status === 'ACTIVE' ? 'SUSPENDED' : 'ACTIVE';
-          return { ...u, status: nextStatus };
+  useEffect(() => {
+    async function loadAdminData() {
+      if (!token) return;
+      try {
+        const [usersRes, logsRes, overviewRes] = await Promise.allSettled([
+          apiRequest<{ users: any[] }>('/admin/users', { headers: { Authorization: `Bearer ${token}` } }),
+          apiRequest<{ logs: any[] }>('/admin/audit-logs', { headers: { Authorization: `Bearer ${token}` } }),
+          apiRequest<{ overview: any }>('/admin/overview', { headers: { Authorization: `Bearer ${token}` } }),
+        ]);
+
+        if (usersRes.status === 'fulfilled' && usersRes.value.success && usersRes.value.data?.users) {
+          const formatted = usersRes.value.data.users.map((u: any) => ({
+            id: u.id,
+            name: u.name || 'User',
+            email: u.email,
+            role: u.roles?.[0]?.role || u.role || 'CREATOR',
+            status: u.status || 'ACTIVE',
+            creditBalance: u.creditWallet?.balance || 0,
+          }));
+          setUsers(formatted);
+          if (formatted.length > 0) setSelectedUserId(formatted[0].id);
         }
-        return u;
-      })
+
+        if (logsRes.status === 'fulfilled' && logsRes.value.success && logsRes.value.data?.logs) {
+          setAuditLogs(logsRes.value.data.logs);
+        }
+
+        if (overviewRes.status === 'fulfilled' && overviewRes.value.success && overviewRes.value.data?.overview) {
+          setOverview(overviewRes.value.data.overview);
+        }
+      } catch (err) {
+        console.error('Admin data fetch error', err);
+      }
+    }
+    loadAdminData();
+  }, [token]);
+
+  const handleStatusToggle = async (userId: string) => {
+    const target = users.find((u) => u.id === userId);
+    if (!target) return;
+    const nextStatus = target.status === 'ACTIVE' ? 'SUSPENDED' : 'ACTIVE';
+    
+    setUsers((prev) =>
+      prev.map((u) => (u.id === userId ? { ...u, status: nextStatus } : u))
     );
+
+    if (token) {
+      await apiRequest(`/admin/users/${userId}/status`, {
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ status: nextStatus }),
+      }).catch(() => {});
+    }
   };
 
-  const handleExecuteAdjustment = (e: React.FormEvent) => {
+  const handleExecuteAdjustment = async (e: React.FormEvent) => {
     e.preventDefault();
-    setUsers((prev) =>
-      prev.map((u) => {
-        if (u.id === selectedUserId) {
-          return { ...u, creditBalance: u.creditBalance + adjustAmount };
-        }
-        return u;
-      })
-    );
-    setAdjustSuccess(true);
-    setTimeout(() => {
-      setAdjustSuccess(false);
-      setIsAdjustModalOpen(false);
-      setAdjustReason('');
-    }, 1500);
+    if (!selectedUserId || !token) return;
+
+    setLoading(true);
+    try {
+      await apiRequest('/admin/credits/adjust', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          userId: selectedUserId,
+          amount: adjustAmount,
+          type: adjustType,
+          reason: adjustReason,
+        }),
+      });
+
+      setUsers((prev) =>
+        prev.map((u) => {
+          if (u.id === selectedUserId) {
+            return { ...u, creditBalance: u.creditBalance + adjustAmount };
+          }
+          return u;
+        })
+      );
+      setAdjustSuccess(true);
+      setTimeout(() => {
+        setAdjustSuccess(false);
+        setIsAdjustModalOpen(false);
+        setAdjustReason('');
+      }, 1500);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -108,10 +185,10 @@ export const AdminDashboard: React.FC = () => {
             <Users size={16} color="var(--color-brand)" />
           </div>
           <div className="metric-value">
-            1,420
+            {overview.totalUsers || users.length}
           </div>
-          <div className="metric-delta" style={{ color: 'var(--color-success)' }}>
-            890 Creators • 530 Brands
+          <div className="metric-delta" style={{ color: 'var(--color-brand)' }}>
+            {overview.creatorsCount} Creators • {overview.brandsCount} Brands
           </div>
         </div>
 
@@ -121,10 +198,10 @@ export const AdminDashboard: React.FC = () => {
             <Coins size={16} color="var(--color-brand)" />
           </div>
           <div className="metric-value">
-            2.4M
+            {overview.circulatingCredits.toLocaleString()}
           </div>
-          <div className="metric-delta" style={{ color: 'var(--text-muted)' }}>
-            Immutable Ledger Balanced
+          <div className="metric-delta" style={{ color: 'var(--color-success)' }}>
+            Immutable Double-Entry Ledger
           </div>
         </div>
 
@@ -134,7 +211,7 @@ export const AdminDashboard: React.FC = () => {
             <Bot size={16} color="var(--color-brand)" />
           </div>
           <div className="metric-value">
-            18.5K
+            {overview.aiQueriesCount}
           </div>
           <div className="metric-delta" style={{ color: 'var(--color-info)' }}>
             openrouter/free tier
@@ -165,47 +242,57 @@ export const AdminDashboard: React.FC = () => {
           </div>
         </div>
 
-        <div className="table-container">
-          <table>
-            <thead>
-              <tr>
-                <th>User / Name</th>
-                <th>Role</th>
-                <th>Status</th>
-                <th>Credit Balance</th>
-                <th>Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {users.map((u) => (
-                <tr key={u.id}>
-                  <td>
-                    <strong>{u.name}</strong>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{u.email}</div>
-                  </td>
-                  <td><span className="badge badge-neutral">{u.role}</span></td>
-                  <td>
-                    <span className={`badge ${u.status === 'ACTIVE' ? 'badge-verified' : 'badge-selfreported'}`}>
-                      {u.status}
-                    </span>
-                  </td>
-                  <td>
-                    <strong>{u.creditBalance.toLocaleString()} Credits</strong>
-                  </td>
-                  <td>
-                    <button
-                      onClick={() => handleStatusToggle(u.id)}
-                      className="btn btn-secondary"
-                      style={{ fontSize: '0.75rem', padding: '0.3rem 0.6rem' }}
-                    >
-                      {u.status === 'ACTIVE' ? <><UserX size={12} /> Suspend</> : <><UserCheck size={12} /> Unsuspend</>}
-                    </button>
-                  </td>
+        {users.length === 0 ? (
+          <div style={{ padding: '3rem 1.5rem', textAlign: 'center' }}>
+            <Users size={36} color="var(--text-muted)" style={{ margin: '0 auto 0.75rem' }} />
+            <h4 style={{ color: 'var(--text-muted)' }}>No Users Registered Yet</h4>
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+              Registered creator and brand accounts will appear here for governance.
+            </p>
+          </div>
+        ) : (
+          <div className="table-container">
+            <table>
+              <thead>
+                <tr>
+                  <th>User / Name</th>
+                  <th>Role</th>
+                  <th>Status</th>
+                  <th>Credit Balance</th>
+                  <th>Action</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {users.map((u) => (
+                  <tr key={u.id}>
+                    <td>
+                      <strong>{u.name}</strong>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{u.email}</div>
+                    </td>
+                    <td><span className="badge badge-neutral">{u.role}</span></td>
+                    <td>
+                      <span className={`badge ${u.status === 'ACTIVE' ? 'badge-verified' : 'badge-selfreported'}`}>
+                        {u.status}
+                      </span>
+                    </td>
+                    <td>
+                      <strong>{u.creditBalance.toLocaleString()} Credits</strong>
+                    </td>
+                    <td>
+                      <button
+                        onClick={() => handleStatusToggle(u.id)}
+                        className="btn btn-secondary"
+                        style={{ fontSize: '0.75rem', padding: '0.3rem 0.6rem' }}
+                      >
+                        {u.status === 'ACTIVE' ? <><UserX size={12} /> Suspend</> : <><UserCheck size={12} /> Unsuspend</>}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       {/* Recent Audit Log Trail */}
@@ -220,49 +307,40 @@ export const AdminDashboard: React.FC = () => {
           </div>
         </div>
 
-        <div className="table-container">
-          <table>
-            <thead>
-              <tr>
-                <th>Timestamp</th>
-                <th>Action</th>
-                <th>Actor ID</th>
-                <th>Entity</th>
-                <th>Details / Metadata</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td><code>Just now</code></td>
-                <td><span className="badge badge-verified">LOGIN_SUCCESS</span></td>
-                <td><code>{user?.id.slice(0, 8)}...</code></td>
-                <td>User</td>
-                <td>Role: {user?.activeRole} • IP: 127.0.0.1</td>
-              </tr>
-              <tr>
-                <td><code>2 mins ago</code></td>
-                <td><span className="badge badge-neutral">USER_REGISTERED</span></td>
-                <td><code>usr_98a2f1</code></td>
-                <td>User</td>
-                <td>Primary Role: CREATOR • Bonus 500 Credits</td>
-              </tr>
-              <tr>
-                <td><code>15 mins ago</code></td>
-                <td><span className="badge badge-verified">CAMPAIGN_RESERVATION</span></td>
-                <td><code>usr_48b1c0</code></td>
-                <td>Campaign</td>
-                <td>Campaign: Mechanical Keyboard Launch (4,000 Credits)</td>
-              </tr>
-              <tr>
-                <td><code>1 hour ago</code></td>
-                <td><span className="badge badge-uploaded">YOUTUBE_SYNC_COMPLETED</span></td>
-                <td><code>usr_82d9a3</code></td>
-                <td>YouTubeChannel</td>
-                <td>Synced 42 videos • Delta views calculated (+14.2K)</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+        {auditLogs.length === 0 ? (
+          <div style={{ padding: '3rem 1.5rem', textAlign: 'center' }}>
+            <FileText size={36} color="var(--text-muted)" style={{ margin: '0 auto 0.75rem' }} />
+            <h4 style={{ color: 'var(--text-muted)' }}>No Audit Log Entries</h4>
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+              System operations, security events, and credit adjustments will stream here.
+            </p>
+          </div>
+        ) : (
+          <div className="table-container">
+            <table>
+              <thead>
+                <tr>
+                  <th>Timestamp</th>
+                  <th>Action</th>
+                  <th>Actor ID</th>
+                  <th>Entity</th>
+                  <th>Details / Metadata</th>
+                </tr>
+              </thead>
+              <tbody>
+                {auditLogs.map((log) => (
+                  <tr key={log.id}>
+                    <td><code>{new Date(log.createdAt).toLocaleTimeString()}</code></td>
+                    <td><span className="badge badge-verified">{log.action}</span></td>
+                    <td><code>{log.actorId ? `${log.actorId.slice(0, 8)}...` : 'System'}</code></td>
+                    <td>{log.entityType}</td>
+                    <td>{typeof log.details === 'object' ? JSON.stringify(log.details) : String(log.details || '—')}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       {/* Adjust Credit Modal */}
@@ -419,8 +497,8 @@ export const AdminDashboard: React.FC = () => {
                   >
                     Cancel
                   </button>
-                  <button type="submit" className="btn btn-primary">
-                    Execute Adjustment
+                  <button type="submit" className="btn btn-primary" disabled={loading}>
+                    {loading ? 'Executing...' : 'Execute Adjustment'}
                   </button>
                 </div>
               </form>

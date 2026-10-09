@@ -3,90 +3,23 @@ import { useAuth } from '../context/AuthContext';
 import { ConversationItem, MessageItem } from '../types/marketplace';
 import { 
   Send, 
-  CheckCheck
+  CheckCheck,
+  MessageSquare
 } from 'lucide-react';
-
-const INITIAL_CONVERSATIONS: ConversationItem[] = [
-  {
-    conversationId: 'conv_1',
-    campaign: {
-      id: 'camp_demo_1',
-      title: 'Creator Studio Mechanical Keyboard Q4 Launch',
-    },
-    participants: [
-      { id: 'usr_brand_1', name: 'Nexus Tech Labs', email: 'brand@nexus.com' },
-      { id: 'usr_creator_1', name: 'Alex Rivera', email: 'alex@techreview.io' },
-    ],
-    lastMessage: {
-      id: 'm1',
-      content: 'Hey Alex! We reviewed your application and love your recent sound test format.',
-      createdAt: '10 mins ago',
-    },
-    updatedAt: new Date().toISOString(),
-  },
-  {
-    conversationId: 'conv_2',
-    campaign: {
-      id: 'camp_demo_2',
-      title: 'AirGlide Wireless Mouse Launch',
-    },
-    participants: [
-      { id: 'usr_brand_1', name: 'Nexus Tech Labs', email: 'brand@nexus.com' },
-      { id: 'usr_creator_2', name: 'Sarah Chen', email: 'sarah@codes.io' },
-    ],
-    lastMessage: {
-      id: 'm2',
-      content: 'Can you deliver the draft video by next Tuesday?',
-      createdAt: '2 hours ago',
-    },
-    updatedAt: new Date().toISOString(),
-  },
-];
-
-const INITIAL_MESSAGES: Record<string, MessageItem[]> = {
-  conv_1: [
-    {
-      id: 'msg_1',
-      conversationId: 'conv_1',
-      senderId: 'usr_creator_1',
-      content: 'Hi Nexus Tech team! I applied to your keyboard launch campaign. I can film in 4K with custom macro shots.',
-      createdAt: '1 hour ago',
-      sender: { id: 'usr_creator_1', name: 'Alex Rivera' },
-    },
-    {
-      id: 'msg_2',
-      conversationId: 'conv_1',
-      senderId: 'usr_brand_1',
-      content: 'Hey Alex! We reviewed your application and love your recent sound test format. When could you have the sample unit tested?',
-      createdAt: '10 mins ago',
-      sender: { id: 'usr_brand_1', name: 'Nexus Tech Labs' },
-    },
-  ],
-  conv_2: [
-    {
-      id: 'msg_3',
-      conversationId: 'conv_2',
-      senderId: 'usr_brand_1',
-      content: 'Can you deliver the draft video by next Tuesday?',
-      createdAt: '2 hours ago',
-      sender: { id: 'usr_brand_1', name: 'Nexus Tech Labs' },
-    },
-  ],
-};
 
 export const MessagingCenter: React.FC = () => {
   const { user } = useAuth();
-  const [conversations] = useState<ConversationItem[]>(INITIAL_CONVERSATIONS);
-  const [activeConvId, setActiveConvId] = useState<string>('conv_1');
-  const [messagesMap, setMessagesMap] = useState<Record<string, MessageItem[]>>(INITIAL_MESSAGES);
+  const [conversations] = useState<ConversationItem[]>([]);
+  const [activeConvId, setActiveConvId] = useState<string>('');
+  const [messagesMap, setMessagesMap] = useState<Record<string, MessageItem[]>>({});
   const [newMessage, setNewMessage] = useState('');
 
-  const activeMessages = messagesMap[activeConvId] || [];
+  const activeMessages = activeConvId ? (messagesMap[activeConvId] || []) : [];
   const activeConversation = conversations.find((c) => c.conversationId === activeConvId);
 
   const handleSendMessage = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newMessage.trim()) return;
+    if (!newMessage.trim() || !activeConvId) return;
 
     const newMsg: MessageItem = {
       id: `msg_${Date.now()}`,
@@ -117,73 +50,82 @@ export const MessagingCenter: React.FC = () => {
         </p>
       </div>
 
-      <div className="card" style={{ padding: 0, overflow: 'hidden', minHeight: '520px', display: 'flex' }}>
-        {/* Left Pane: Conversations List */}
-        <div style={{
-          width: '320px',
-          borderRight: '1px solid var(--border-subtle)',
-          backgroundColor: 'var(--bg-subtle)',
-          display: 'flex',
-          flexDirection: 'column',
-        }}>
-          <div style={{ padding: '1rem', borderBottom: '1px solid var(--border-subtle)', fontWeight: 700, fontSize: '0.875rem' }}>
-            Active Discussions ({conversations.length})
-          </div>
+      {conversations.length === 0 ? (
+        <div className="card text-center" style={{ padding: '3.5rem 2rem' }}>
+          <MessageSquare size={40} color="var(--text-muted)" style={{ margin: '0 auto 1rem' }} />
+          <h3>No Active Discussions Yet</h3>
+          <p style={{ maxWidth: '440px', margin: '0.5rem auto 1.5rem', color: 'var(--text-muted)' }}>
+            Discussions start automatically when you apply to campaigns, invite creators, or initiate an engagement brief.
+          </p>
+        </div>
+      ) : (
+        <div className="card" style={{ padding: 0, overflow: 'hidden', minHeight: '520px', display: 'flex' }}>
+          {/* Left Pane: Conversations List */}
+          <div style={{
+            width: '320px',
+            borderRight: '1px solid var(--border-subtle)',
+            backgroundColor: 'var(--bg-subtle)',
+            display: 'flex',
+            flexDirection: 'column',
+          }}>
+            <div style={{ padding: '1rem', borderBottom: '1px solid var(--border-subtle)', fontWeight: 700, fontSize: '0.875rem' }}>
+              Active Discussions ({conversations.length})
+            </div>
 
-          <div style={{ flex: 1, overflowY: 'auto' }}>
-            {conversations.map((conv) => {
-              const otherUser = conv.participants.find((p) => p.id !== user?.id) || conv.participants[0];
-              const isSelected = conv.conversationId === activeConvId;
+            <div style={{ flex: 1, overflowY: 'auto' }}>
+              {conversations.map((conv) => {
+                const otherUser = conv.participants.find((p) => p.id !== user?.id) || conv.participants[0];
+                const isSelected = conv.conversationId === activeConvId;
 
-              return (
-                <div
-                  key={conv.conversationId}
-                  onClick={() => setActiveConvId(conv.conversationId)}
-                  style={{
-                    padding: '0.875rem 1rem',
-                    borderBottom: '1px solid var(--border-subtle)',
-                    backgroundColor: isSelected ? 'var(--bg-surface)' : 'transparent',
-                    borderLeft: isSelected ? '3px solid var(--color-brand)' : '3px solid transparent',
-                    cursor: 'pointer',
-                  }}
-                >
-                  <div className="flex items-center justify-between" style={{ marginBottom: '0.25rem' }}>
-                    <div style={{ fontWeight: 600, fontSize: '0.85rem' }}>{otherUser?.name}</div>
-                    <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-                      {conv.lastMessage?.createdAt}
-                    </span>
-                  </div>
+                return (
+                  <div
+                    key={conv.conversationId}
+                    onClick={() => setActiveConvId(conv.conversationId)}
+                    style={{
+                      padding: '0.875rem 1rem',
+                      borderBottom: '1px solid var(--border-subtle)',
+                      backgroundColor: isSelected ? 'var(--bg-surface)' : 'transparent',
+                      borderLeft: isSelected ? '3px solid var(--color-brand)' : '3px solid transparent',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <div className="flex items-center justify-between" style={{ marginBottom: '0.25rem' }}>
+                      <div style={{ fontWeight: 600, fontSize: '0.85rem' }}>{otherUser?.name}</div>
+                      <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                        {conv.lastMessage?.createdAt}
+                      </span>
+                    </div>
 
-                  {conv.campaign && (
+                    {conv.campaign && (
+                      <div style={{
+                        fontSize: '0.72rem',
+                        color: 'var(--color-brand)',
+                        fontWeight: 600,
+                        marginBottom: '0.25rem',
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                      }}>
+                        {conv.campaign.title}
+                      </div>
+                    )}
+
                     <div style={{
-                      fontSize: '0.72rem',
-                      color: 'var(--color-brand)',
-                      fontWeight: 600,
-                      marginBottom: '0.25rem',
+                      fontSize: '0.775rem',
+                      color: 'var(--text-muted)',
                       whiteSpace: 'nowrap',
                       overflow: 'hidden',
                       textOverflow: 'ellipsis',
                     }}>
-                      {conv.campaign.title}
+                      {conv.lastMessage?.content}
                     </div>
-                  )}
-
-                  <div style={{
-                    fontSize: '0.775rem',
-                    color: 'var(--text-muted)',
-                    whiteSpace: 'nowrap',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                  }}>
-                    {conv.lastMessage?.content}
                   </div>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
-        </div>
 
-        {/* Right Pane: Active Message Thread */}
+          {/* Right Pane: Active Message Thread */}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', backgroundColor: 'var(--bg-surface)' }}>
           {/* Thread Header */}
           <div style={{
@@ -293,6 +235,7 @@ export const MessagingCenter: React.FC = () => {
           </form>
         </div>
       </div>
+      )}
     </div>
   );
 };
