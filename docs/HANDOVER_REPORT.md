@@ -99,44 +99,83 @@ $$\text{New Incremental Payout} = \min\left(\text{Total Earnable Credits} - \tex
 ### Social & YouTube (`/api/v1/social/youtube`)
 * `GET /api/v1/social/youtube/oauth/url` — Google OAuth 2.0 authorization URL
 * `GET /api/v1/social/youtube/oauth/callback` — OAuth code exchange with token encryption
+* `POST /api/v1/social/youtube/channel/link` — Direct channel URL linking (@handle / channelId)
+* `POST /api/v1/social/youtube/video/analyze` — Live YouTube video view & engagement parser
+* `POST /api/v1/social/youtube/video/portfolio` — Add analyzed video to creator portfolio
 * `POST /api/v1/social/youtube/sync` — Live channel & video snapshot sync
 * `POST /api/v1/social/youtube/manual-entry` — Self-reported metrics entry
 
 ### Credits & Ledger (`/api/v1/credits`, `/api/v1/admin`)
 * `GET /api/v1/credits/wallet` — User credit wallet and balance breakdown
 * `GET /api/v1/credits/ledger` — Immutable credit audit ledger
+* `POST /api/v1/credits/top-up` — Instant credit deposit (+500, +1000, +5000)
 * `POST /api/v1/admin/credits/adjust` — Admin credit adjustment
 
 ---
 
-## 5. Production Operations & Runbook
+## 5. End-to-End Feature Verification Guide
 
-### Running Locally with Docker
-```bash
-# 1. Start PostgreSQL + pgvector
-docker-compose up -d
+### 🅰️ Brand Dashboard Testing Workflow
 
-# 2. Setup Backend
-cd backend
-npm install
-npm run prisma:generate
-npm run prisma:push
-npm run prisma:seed    # Seeds full showcase data
-npm run test           # Executes 22-step automated test suite
-npm run dev            # Starts backend on http://localhost:5000
+1. **Brand Overview & Live Metrics:**
+   - Log in as `brand@creatoros.io` (`Password123!`).
+   - The metric cards display real dynamic database metrics:
+     - **Credit Balance & Escrow:** Live query from `creditWallet`.
+     - **Active Campaigns:** Count of active campaigns from `/performance/brand/analytics`.
+     - **Partnered Creators:** Count of creators across all active campaigns.
+     - **Total Verified Views:** Sum of verified incremental views across campaigns.
+   - Click **"+ Top Up Credits"** in the Credits tab to add 1,000 credits; verify the live balance increases immediately.
 
-# 3. Setup Frontend
-cd ../frontend
-npm install
-npm run dev            # Starts frontend on http://localhost:5173
-```
+2. **Products & AI Briefs (`tab-products`):**
+   - Click **"Create Product"**. Enter product name, category, and description.
+   - Click **"✨ AI Analyze Product"**: OpenRouter AI analyzes the product, generates USPs, target audience segments, and video formats.
+   - Click **"Save Product"**: Product is persisted in PostgreSQL.
 
-### Pre-Configured Demo Accounts
-* **Brand:** `brand@creatoros.io` / `Password123!` (Apex Audio Labs)
-* **Creator (Tech):** `creator@creatoros.io` / `Password123!` (@alexriveratech)
-* **Creator (Design):** `elena@creatoros.io` / `Password123!` (@elenadesigns)
-* **Creator (Code):** `marcus@creatoros.io` / `Password123!` (@marcuscode)
-* **Admin:** `admin@creatoros.io` / `Password123!` (Platform Operations)
+3. **Campaigns Manager (`tab-campaigns`):**
+   - Click **"Create Campaign"**: Enter title, select a product, and enter objective.
+   - Click **"✨ AI Assist Brief"**: OpenRouter generates high-converting creative hooks, creator guidelines, and suggested hashtags.
+   - Set Budget (e.g. `1,000` credits) and CPM rate (e.g. `₹50`).
+   - Click **"Launch Campaign"**: Credits are reserved into escrow immediately, and the campaign appears in the active list.
+   - Click **"View Applicants"** on any campaign: see real creator pitches, proposed rates, and click **"Accept Creator"** or **"Decline"**.
+
+4. **Creator Discovery & Invitations (`tab-creators`):**
+   - Search creators by handle or skill (e.g. `alexriveratech`).
+   - Click **"AI Match Intelligence"**: runs deterministic scoring engine and natural language synthesis.
+   - Click **"Invite Creator"**: opens invitation modal. Submit message to create an active conversation thread.
+
+5. **Direct In-App Messaging (`tab-messages`):**
+   - View conversation threads on the left.
+   - Type message and click **"Send"**: message is persisted via `POST /messages/conversations/:id/messages` and updates thread in real-time.
+
+---
+
+### 🅱️ Creator Dashboard Testing Workflow
+
+1. **Creator Overview & Live Stats:**
+   - Log in as `creator@creatoros.io` (`Password123!`).
+   - Verify metrics display real data from `/performance/creator/summary` and YouTube.
+
+2. **YouTube Channel & Video Analyzer (`tab-creator-youtube`):**
+   - **Direct URL Linking:** Click the **"Link Channel URL / @handle"** tab. Paste any YouTube channel URL (e.g., `https://www.youtube.com/@mkbhd`) or `@handle` and click **"Link Channel via URL"**. The system fetches real subscriber counts, view counts, and video counts.
+   - **Video Analyzer:** Click the **"Live Video Analyzer"** tab. Paste any public YouTube video link (e.g., `https://www.youtube.com/watch?v=dQw4w9WgXcQ`) and click **"Analyze Video Performance"**. Real view count, likes, comment count, engagement rate %, and projected CPM rewards are computed.
+   - Click **"Add to AI Portfolio"**: automatically saves the analyzed video into your portfolio with full view telemetry!
+
+3. **Campaign Discovery & AI Pitch Generator (`tab-discover-campaigns`):**
+   - Browse marketplace campaigns.
+   - Click **"Apply to Campaign"**.
+   - In the application modal, click **"✨ AI Generate Pitch"**: OpenRouter reads the campaign brief, target audience, and your creator handle to draft an authentic, persuasive pitch proposal!
+   - Enter proposed CPM rate and click **"Submit Application"**.
+
+4. **Active Content Tracking & Verified Payout Engine (`tab-creator-performance`):**
+   - Click **"+ Submit Published Content Link"**.
+   - Select campaign, paste YouTube video link, enter title. The modal queries video metrics and prefills baseline views ($V_0$).
+   - Click **"Submit Content Track"**: creates track in database.
+   - Click **"Evaluate View Snapshot & Trigger CPM Payout"**: ingests new views, verifies delta ($\Delta V = V_t - V_0$), releases proportional credits from campaign escrow directly into creator wallet, and logs transaction in ledger!
+
+5. **Wallet & Immutable Ledger (`tab-creator-credits`):**
+   - View real-time available earnings.
+   - Review immutable double-entry ledger table with transaction types (`CAMPAIGN_REWARD`, `CREDIT_GRANT`, etc.).
+   - Click **"+ Top Up Credits"** to deposit internal credits anytime.
 
 ---
 
@@ -144,4 +183,5 @@ npm run dev            # Starts frontend on http://localhost:5173
 * **Automated Test Suite:** 22 / 22 assertions passing (100%).
 * **Backend Build:** `tsc` compiled with exit code 0.
 * **Frontend Build:** `tsc && vite build` compiled with exit code 0.
-* **All 8 Development Phases:** 100% complete and fully verified.
+* **All Branches Synchronized:** `main`, `dhruvil`, `hinesh`, and `ronak` up to date.
+* **Zero Dummy Mock Data:** Fully dynamic data wired across both Brand and Creator dashboards.
