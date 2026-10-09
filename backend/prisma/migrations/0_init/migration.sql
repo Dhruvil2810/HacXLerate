@@ -1,4 +1,4 @@
-﻿-- CreateEnum
+-- CreateEnum
 CREATE TYPE "RoleType" AS ENUM ('BRAND', 'CREATOR', 'ADMIN');
 
 -- CreateEnum
